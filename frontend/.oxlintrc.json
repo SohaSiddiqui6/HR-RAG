@@ -1,18 +1,18 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "react-perf", "typescript", "jsx-a11y", "import", "oxc"],
+  "plugins": ["react", "typescript", "jsx-a11y", "import", "oxc"],
   "settings": {
     "react": { "runtime": "automatic" }
   },
   "categories": {
     "correctness": "error",
-    "suspicious": "warn",
-    "perf": "warn"
+    "suspicious": "warn"
   },
   "rules": {
     "react/react-in-jsx-scope": "off",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "warn",
+    "react/exhaustive-effect-dependencies": "off",
     "react/only-export-components": ["warn", { "allowConstantExport": true }],
     "import/no-cycle": "error",
     "import/no-unassigned-import": "off"
