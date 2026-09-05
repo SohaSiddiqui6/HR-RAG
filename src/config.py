@@ -16,6 +16,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 CHROMA_API_KEY = os.getenv("CHROMA_API_KEY", "")
 CHROMA_TENANT = os.getenv("CHROMA_TENANT", "")
 COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
+# Tracing is enabled whenever this is set (secret key + host read by the SDK).
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 
 # --- Chroma Cloud ----------------------------------------------------------
 CHROMA_DATABASE = os.getenv("CHROMA_DATABASE", "production-rag")
@@ -39,3 +41,11 @@ CANDIDATE_POOL = int(os.getenv("CANDIDATE_POOL", "200"))
 DENSE_WEIGHT = float(os.getenv("DENSE_WEIGHT", "0.6"))
 SPARSE_WEIGHT = float(os.getenv("SPARSE_WEIGHT", "0.4"))
 RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", "5"))
+# Drop reranked chunks below this Cohere relevance score. If nothing clears it,
+# the question is treated as out of scope and answered with a fixed refusal
+# (no LLM call) rather than trusting the model to abstain.
+RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "0.3"))
+# Cohere trial keys allow only 10 requests/minute; retry the rerank on a 429
+# with linear backoff (base_delay, 2*base_delay, ...) instead of failing.
+RERANK_MAX_RETRIES = int(os.getenv("RERANK_MAX_RETRIES", "5"))
+RERANK_RETRY_BASE_DELAY = float(os.getenv("RERANK_RETRY_BASE_DELAY", "7.0"))

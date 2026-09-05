@@ -12,6 +12,7 @@ from starlette.requests import Request
 
 from src import config, guardrails
 from src.rag_chain import answer_question
+from src.tracing import trace_config
 
 app = FastAPI(title="HR-RAG")
 
@@ -44,7 +45,7 @@ def ask(payload: Question):
     if not ok:
         return JSONResponse(status_code=400, content={"error": reason})
 
-    result = answer_question(payload.question)
+    result = answer_question(payload.question, run_config=trace_config())
     return {
         "answer": guardrails.check_answer(result.text),
         "sources": result.sources,

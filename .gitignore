@@ -14,7 +14,7 @@ models_cache/
 
 # Local pipeline state (regenerated)
 docs/ingestion_manifest.json
-evaluation/eval_results.json
+evaluation/results.json
 
 # IDE / OS
 .vscode/

@@ -1,33 +1,29 @@
 """Retrieval + generation: server-side hybrid search, Cohere rerank, grounded answer.
 
 ``ChromaHybridRetriever`` is a thin ``BaseRetriever`` over Chroma's server-side
-RRF fusion of the dense and sparse indexes. It is wrapped in a Cohere reranker,
-and ``answer_question`` feeds the reranked chunks to the LLM with a citation
-prompt.
+RRF fusion of the dense and sparse indexes. It is wrapped in a Cohere reranker
+(``retrieve`` retries that call on trial-key 429s), and ``answer_question`` feeds
+the reranked chunks to the LLM with a citation prompt.
 """
 
 from __future__ import annotations
 
+import functools
+import time
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 from chromadb import K, Knn, Rrf, Search
+from cohere.errors import TooManyRequestsError
+from langchain.retrievers.contextual_compression import ContextualCompressionRetriever
 from langchain_cohere import CohereRerank
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.retrievers import BaseRetriever
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from pydantic import ConfigDict
-
-try:  # location moved across langchain 0.3 releases
-    from langchain.retrievers.contextual_compression import (
-        ContextualCompressionRetriever,
-    )
-except ImportError:  # pragma: no cover
-    from langchain_classic.retrievers.contextual_compression import (
-        ContextualCompressionRetriever,
-    )
 
 from src import config
 from src.vectorstore import get_collection
@@ -35,10 +31,14 @@ from src.vectorstore import get_collection
 RRF_K = 60
 MISSING_RANK = 1000  # rank for docs absent from one of the two rankings
 
+# Returned verbatim when retrieval finds nothing relevant (see RELEVANCE_THRESHOLD).
+NO_ANSWER = "I don't have information about that in the available HR policies."
+
 PROMPT = ChatPromptTemplate.from_template(
     """Use the following pieces of context to answer the question at the end.
 If you don't know the answer, just say that you don't know, don't try to make up an answer.
-Always cite the source, page_no, and headings from the context in your answer.
+Cite each fact inline in square brackets using the source name, e.g. [remote-work-policy].
+Do not invent citations.
 
 Context:
 {context}
@@ -119,37 +119,59 @@ def _format_docs(docs: List[Document]) -> str:
     )
 
 
-_retriever: Optional[Any] = None
-_llm: Optional[ChatOpenAI] = None
-
-
-def get_retriever():
+@functools.lru_cache(maxsize=1)
+def get_retriever() -> ContextualCompressionRetriever:
     """Hybrid retriever wrapped in a Cohere reranker (built once, then cached)."""
-    global _retriever
-    if _retriever is None:
-        hybrid = ChromaHybridRetriever(collection=get_collection())
-        compressor = CohereRerank(
-            model=config.RERANK_MODEL, top_n=config.RERANK_TOP_N
-        )
-        _retriever = ContextualCompressionRetriever(
-            base_compressor=compressor, base_retriever=hybrid
-        )
-    return _retriever
+    hybrid = ChromaHybridRetriever(collection=get_collection())
+    compressor = CohereRerank(model=config.RERANK_MODEL, top_n=config.RERANK_TOP_N)
+    return ContextualCompressionRetriever(
+        base_compressor=compressor, base_retriever=hybrid
+    )
 
 
+@functools.lru_cache(maxsize=1)
 def get_llm() -> ChatOpenAI:
-    global _llm
-    if _llm is None:
-        _llm = ChatOpenAI(model=config.LLM_MODEL, temperature=0)
-    return _llm
+    return ChatOpenAI(model=config.LLM_MODEL, temperature=0)
 
 
-def answer_question(question: str) -> Answer:
-    """Retrieve, rerank, and generate a grounded, cited answer."""
-    docs = get_retriever().invoke(question)
+def retrieve(question: str, run_config: RunnableConfig | None = None) -> List[Document]:
+    """Hybrid retrieve + Cohere rerank, retrying on the rerank rate limit (429)."""
+    retriever = get_retriever()
+    for attempt in range(1, config.RERANK_MAX_RETRIES + 1):
+        try:
+            return retriever.invoke(question, config=run_config)
+        except TooManyRequestsError:
+            if attempt >= config.RERANK_MAX_RETRIES:
+                raise
+            delay = config.RERANK_RETRY_BASE_DELAY * attempt
+            print(
+                f"Cohere rerank rate-limited; retrying in {delay:.0f}s "
+                f"(attempt {attempt + 1}/{config.RERANK_MAX_RETRIES})"
+            )
+            time.sleep(delay)
+    raise RuntimeError("unreachable: RERANK_MAX_RETRIES must be >= 1")
+
+
+def answer_question(question: str, run_config: RunnableConfig | None = None) -> Answer:
+    """Retrieve, rerank, and generate a grounded, cited answer.
+
+    If no retrieved chunk clears ``RELEVANCE_THRESHOLD`` the question is out of
+    scope and ``NO_ANSWER`` is returned without calling the LLM. ``run_config`` is
+    a LangChain config (e.g. ``{"callbacks": [...]}``) threaded into every model
+    call so the chain can be traced.
+    """
+    docs = [
+        d
+        for d in retrieve(question, run_config)
+        if d.metadata.get("relevance_score", 0.0) >= config.RELEVANCE_THRESHOLD
+    ]
+    if not docs:
+        return Answer(text=NO_ANSWER)
+
     context = _format_docs(docs)
     response = get_llm().invoke(
-        PROMPT.format_messages(context=context, question=question)
+        PROMPT.format_messages(context=context, question=question),
+        config=run_config,
     )
     sources = [
         {
@@ -160,7 +182,7 @@ def answer_question(question: str) -> Answer:
         for d in docs
     ]
     return Answer(
-        text=response.content,
+        text=str(response.content),
         sources=sources,
         contexts=[d.page_content for d in docs],
     )

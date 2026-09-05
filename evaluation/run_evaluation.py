@@ -1,130 +1,204 @@
-"""Offline evaluation over the golden set in eval_questions.json.
+"""Run the RAG evaluation as a Langfuse experiment.
 
-For each question it runs the full RAG chain and scores two things:
+    python -m evaluation.run_evaluation                  # whole dataset
+    python -m evaluation.run_evaluation --tag regression # only regression items
+    python -m evaluation.run_evaluation --limit 5        # first 5 (smoke run)
 
-- citation accuracy - was the expected source document cited in the answer?
-- groundedness      - LLM-as-judge: is every claim supported by the retrieved context?
+Per item it scores hit@5, recall@5, mrr, faithfulness, correctness, citation,
+abstention and the task_success composite (see evaluation/metrics.py) — retrieval
+and generation metrics are skipped for unanswerable items (empty
+``expected_sources``), which are scored on abstention instead. Latency / cost /
+token usage / full traces live in the Langfuse UI. A summary is written to
+evaluation/results.json and failing items are printed ready to paste into
+dataset.json.
 
-Plus latency percentiles. Results are written to evaluation/eval_results.json.
-
-    python -m evaluation.run_evaluation
+Requires LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (see .env.example).
 """
 
 from __future__ import annotations
 
+import argparse
 import json
-import re
 import statistics
 import time
+from datetime import datetime
 from pathlib import Path
 
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
+from langfuse import Evaluation, get_client
+from langfuse.experiment import LocalExperimentItem
 
+from evaluation import metrics
 from src.rag_chain import answer_question
+from src.tracing import trace_config
 
-QUESTIONS_FILE = Path(__file__).parent / "eval_questions.json"
-RESULTS_FILE = Path(__file__).parent / "eval_results.json"
+DATASET = Path(__file__).parent / "dataset.json"
+RESULTS = Path(__file__).parent / "results.json"
 
-judge_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=10)
+ITEM_METRICS = [
+    "hit@5",
+    "recall@5",
+    "mrr",
+    "faithfulness",
+    "correctness",
+    "citation",
+    "abstention",
+    "task_success",
+]
 
-JUDGE_PROMPT = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            (
-                "You are an impartial judge evaluating whether an answer is fully "
-                "supported by the provided context. Respond with ONLY 'GROUNDED' or "
-                "'NOT_GROUNDED'. If the answer correctly says it cannot find the "
-                "information, that is GROUNDED. Minor paraphrasing is acceptable."
-            ),
-        ),
-        (
-            "human",
-            (
-                "Context:\n{context}\n\nQuestion: {question}\n\nAnswer: {answer}\n\n"
-                "Is this answer fully grounded in the context?"
-            ),
-        ),
+
+def load_items(tag: str | None, limit: int | None) -> list[LocalExperimentItem]:
+    rows = json.loads(DATASET.read_text())
+    if tag:
+        rows = [r for r in rows if tag in r.get("tags", [])]
+    if limit:
+        rows = rows[:limit]
+    return [
+        LocalExperimentItem(
+            input={"question": r["question"]},
+            expected_output={"answer": r["expected_answer"], "sources": r["expected_sources"]},
+            metadata={"id": r["id"], "tags": r.get("tags", [])},
+        )
+        for r in rows
     ]
-)
 
 
-def source_stem(value: str | None) -> str:
-    return Path(str(value or "")).stem
+def task(*, item, **_) -> dict:
+    started = time.perf_counter()
+    answer = answer_question(item["input"]["question"], run_config=trace_config())
+    return {
+        "answer": answer.text,
+        "sources": [s["source"] for s in answer.sources],
+        "contexts": answer.contexts,
+        "latency_ms": round((time.perf_counter() - started) * 1000),
+    }
 
 
-def citation_accurate(answer: str, expected_source: str) -> bool:
-    """Was the expected source cited, in any of the bracket formats models use?"""
-    normalised = (
-        answer.replace("‑", "-").replace("–", "-").replace("—", "-")
+def mean_score(metric: str):
+    """Run-level aggregate: mean of a metric across the items that emitted it
+    (= pass rate for booleans). Emits nothing if no item scored the metric."""
+
+    def _agg(*, item_results, **_) -> list[Evaluation]:
+        values = [e.value for r in item_results for e in r.evaluations if e.name == metric]
+        if not values:
+            return []
+        return [Evaluation(name=metric, value=round(sum(values) / len(values), 3))]
+
+    _agg.__name__ = f"{metric}_mean"
+    return _agg
+
+
+def _task_success_by_tag(result) -> dict:
+    """task_success rate grouped by dataset tag (factual / multi-hop / unanswerable / ...)."""
+    groups: dict[str, list[bool]] = {}
+    for r in result.item_results:
+        success = next((e.value for e in r.evaluations if e.name == "task_success"), None)
+        if success is None:
+            continue
+        for tag in r.item["metadata"]["tags"]:
+            if tag != "golden":
+                groups.setdefault(tag, []).append(success)
+    return {tag: round(sum(v) / len(v), 3) for tag, v in sorted(groups.items())}
+
+
+def summarise(result, run_name: str) -> dict:
+    items, latencies = [], []
+    for r in result.item_results:
+        scores = {e.name: e.value for e in r.evaluations}
+        errored = r.output is None
+        if not errored:
+            latencies.append(r.output["latency_ms"])
+        items.append(
+            {
+                "id": r.item["metadata"]["id"],
+                "question": r.item["input"]["question"],
+                "error": errored,
+                "latency_ms": None if errored else r.output["latency_ms"],
+                **{m: scores.get(m) for m in ITEM_METRICS},
+            }
+        )
+
+    aggregate = {e.name: e.value for e in result.run_evaluations}
+    aggregate["error_count"] = sum(i["error"] for i in items)
+    aggregate["latency_p50_ms"] = round(statistics.median(latencies)) if latencies else None
+    aggregate["latency_p95_ms"] = (
+        round(statistics.quantiles(latencies, n=20)[-1]) if len(latencies) > 1 else None
     )
-    for item in re.findall(r"\[([^\]]+)\]", normalised):
-        item = re.sub(r"^Source\s+\d+:\s*", "", item, flags=re.IGNORECASE).strip()
-        if item == expected_source or source_stem(item) == expected_source:
-            return True
-    return False
+
+    summary = {
+        "run_name": run_name,
+        "aggregate": aggregate,
+        "task_success_by_tag": _task_success_by_tag(result),
+        "items": items,
+    }
+    RESULTS.write_text(json.dumps(summary, indent=2))
+    return summary
 
 
-def is_grounded(question: str, answer: str, contexts: list[str]) -> bool:
-    response = (JUDGE_PROMPT | judge_llm).invoke(
-        {"context": "\n\n".join(contexts), "question": question, "answer": answer}
-    )
-    verdict = response.content.upper()
-    return "GROUNDED" in verdict and "NOT_GROUNDED" not in verdict
+def failing_items(result) -> list[dict]:
+    """Failed items, shaped for pasting into dataset.json (keeps the type tag)."""
+    out = []
+    for r in result.item_results:
+        if any(e.name == "task_success" and e.value for e in r.evaluations):
+            continue
+        exp = r.item["expected_output"]
+        tags = [t for t in r.item["metadata"]["tags"] if t != "golden"]
+        out.append(
+            {
+                "id": r.item["metadata"]["id"],
+                "question": r.item["input"]["question"],
+                "expected_answer": exp["answer"],
+                "expected_sources": exp["sources"],
+                "tags": [*tags, "regression"],
+            }
+        )
+    return out
 
 
 def main() -> None:
-    cases = json.loads(QUESTIONS_FILE.read_text())
-    results: list[dict] = []
-    latencies: list[int] = []
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tag", help="only run dataset items carrying this tag")
+    parser.add_argument("--limit", type=int, help="run only the first N items")
+    args = parser.parse_args()
 
-    for i, case in enumerate(cases, 1):
-        print(f"[{i}/{len(cases)}] {case['question']}")
+    items = load_items(args.tag, args.limit)
+    if not items:
+        print(f"No dataset items{f' tagged {args.tag!r}' if args.tag else ''}.")
+        return
 
-        start = time.time()
-        answer = answer_question(case["question"])
-        latency_ms = round((time.time() - start) * 1000)
-        latencies.append(latency_ms)
+    run_name = datetime.now().strftime("%Y-%m-%d %H:%M")
+    langfuse = get_client()
+    result = langfuse.run_experiment(
+        name="hr-rag",
+        run_name=run_name,
+        data=items,
+        task=task,
+        evaluators=[
+            metrics.hit_at_5,
+            metrics.recall_at_5,
+            metrics.mrr,
+            metrics.faithfulness,
+            metrics.correctness,
+            metrics.citation,
+            metrics.abstention,
+        ],
+        composite_evaluator=metrics.task_success,  # type: ignore[arg-type]  # keyword-only subset of the protocol
+        run_evaluators=[mean_score(m) for m in ITEM_METRICS],
+        max_concurrency=1,  # Cohere trial key = 10 req/min; retrieve() retries 429s
+    )
+    langfuse.flush()
 
-        cite = citation_accurate(answer.text, case["expected_source"])
-        time.sleep(1)  # be gentle with the judge model's rate limit
-        grounded = is_grounded(case["question"], answer.text, answer.contexts)
+    print(result.format())
 
-        results.append(
-            {
-                "id": case["id"],
-                "domain": case.get("domain"),
-                "question": case["question"],
-                "expected_source": case["expected_source"],
-                "answer": answer.text,
-                "sources": [s["source"] for s in answer.sources],
-                "citation_accurate": cite,
-                "grounded": grounded,
-                "latency_ms": latency_ms,
-            }
-        )
-        print(f"  grounded={grounded}  citation={cite}  {latency_ms}ms")
+    summary = summarise(result, run_name)
+    if summary["task_success_by_tag"]:
+        print("task_success by tag:")
+        for tag, rate in summary["task_success_by_tag"].items():
+            print(f"  {tag:<14} {rate}")
 
-    n = len(results)
-    metrics = {
-        "total_questions": n,
-        "groundedness_pct": round(sum(r["grounded"] for r in results) / n * 100, 1),
-        "citation_accuracy_pct": round(
-            sum(r["citation_accurate"] for r in results) / n * 100, 1
-        ),
-        "latency_p50_ms": round(statistics.median(latencies)),
-        "latency_p95_ms": sorted(latencies)[min(n - 1, int(n * 0.95))],
-        "latency_mean_ms": round(statistics.mean(latencies)),
-    }
-
-    RESULTS_FILE.write_text(json.dumps({"metrics": metrics, "results": results}, indent=2))
-
-    print("\n" + "=" * 50)
-    print("EVALUATION SUMMARY")
-    print("=" * 50)
-    for key, value in metrics.items():
-        print(f"  {key}: {value}")
+    failures = failing_items(result)
+    if failures:
+        print(f"\n{len(failures)} failing item(s) — paste into dataset.json:\n")
+        print(json.dumps(failures, indent=2))
 
 
 if __name__ == "__main__":
