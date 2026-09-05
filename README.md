@@ -30,7 +30,8 @@ HR-RAG/
 │   ├── metrics.py           #   (faithfulness/correctness/citation), abstention
 │   └── run_evaluation.py    #   on unanswerables, task_success  (evaluation/README.md)
 ├── tests/
-├── static/ · templates/     # minimal chat UI
+├── frontend/                 # React + TS SPA (see frontend/README.md)
+├── static/ · templates/     # legacy Jinja chat UI (replaced by frontend/)
 ├── docs/                     # policy PDFs + ingestion manifest
 ├── pyproject.toml · requirements.txt · .env.example · Procfile
 ```
@@ -67,4 +68,13 @@ uv run python -m src.app                    # dev server -> http://localhost:800
 uv run uvicorn src.app:app --reload         # ... or run uvicorn directly
 uv run python -m evaluation.run_evaluation  # score the dataset (see evaluation/README.md)
 uv run pytest                               # unit tests
+```
+
+## Frontend
+
+A React + TypeScript SPA in [frontend/](frontend/) (Vite · Tailwind · shadcn ·
+TanStack Query). Run it alongside the API:
+
+```bash
+cd frontend && npm install && npm run dev   # http://localhost:5173, proxies /api -> :8000
 ```

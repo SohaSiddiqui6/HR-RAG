@@ -21,3 +21,8 @@ evaluation/results.json
 .idea/
 .DS_Store
 .pytest_cache/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env

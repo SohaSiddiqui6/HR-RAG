@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Dark is the only theme for v1 (mockup is dark); the `.light`
+ * block exists so a toggle can be added later without touching components.
+ * Values are tuned to the v0 mockup: near-black ground, lifted panels,
+ * hairline borders, a mint accent, and a light user bubble.
+ */
+:root,
+.dark {
+  --background: oklch(0.16 0 0); /* app ground */
+  --foreground: oklch(0.95 0 0);
+
+  --panel: oklch(0.19 0 0); /* sidebar / workspace */
+  --panel-foreground: oklch(0.95 0 0);
+
+  --card: oklch(0.21 0 0); /* assistant message, cards */
+  --card-foreground: oklch(0.95 0 0);
+
+  --muted: oklch(0.24 0 0);
+  --muted-foreground: oklch(0.62 0 0);
+
+  --primary: oklch(0.82 0.11 165); /* mint accent */
+  --primary-foreground: oklch(0.2 0.03 165);
+
+  --accent: oklch(0.26 0.02 165);
+  --accent-foreground: oklch(0.95 0 0);
+
+  --user-bubble: oklch(0.9 0 0); /* light user message */
+  --user-bubble-foreground: oklch(0.2 0 0);
+
+  --border: oklch(0.27 0 0);
+  --input: oklch(0.27 0 0);
+  --ring: oklch(0.82 0.11 165);
+
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --radius: 0.625rem;
+}
+
+.light {
+  --background: oklch(0.99 0 0);
+  --foreground: oklch(0.2 0 0);
+  --panel: oklch(0.97 0 0);
+  --panel-foreground: oklch(0.2 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0 0);
+  --muted: oklch(0.96 0 0);
+  --muted-foreground: oklch(0.5 0 0);
+  --primary: oklch(0.7 0.12 165);
+  --primary-foreground: oklch(1 0 0);
+  --accent: oklch(0.95 0.02 165);
+  --accent-foreground: oklch(0.2 0 0);
+  --user-bubble: oklch(0.22 0 0);
+  --user-bubble-foreground: oklch(0.98 0 0);
+  --border: oklch(0.92 0 0);
+  --input: oklch(0.92 0 0);
+  --ring: oklch(0.7 0.12 165);
+}
+
+/* Map tokens to Tailwind's theme so `bg-background`, `text-muted-foreground` etc. work. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-panel: var(--panel);
+  --color-panel-foreground: var(--panel-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-user-bubble: var(--user-bubble);
+  --color-user-bubble-foreground: var(--user-bubble-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      Roboto,
+      "Helvetica Neue",
+      Arial,
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
