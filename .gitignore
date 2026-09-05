@@ -12,9 +12,6 @@ venv/
 models_cache/
 .docling/
 
-# Notebook checkpoints
-.ipynb_checkpoints/
-
 # Local pipeline state (regenerated)
 docs/ingestion_manifest.json
 evaluation/eval_results.json

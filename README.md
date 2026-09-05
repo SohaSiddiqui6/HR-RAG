@@ -62,6 +62,3 @@ uv run uvicorn src.app:app --reload         # ... or run uvicorn directly
 uv run python -m evaluation.run_evaluation  # score the golden set
 uv run pytest                               # unit tests
 ```
-
-The Colab notebook the pipeline was prototyped in is kept at
-`Ingestion_Pipeline_New.ipynb` for reference.
