@@ -1,20 +1,19 @@
 name: eval
 
 # Runs the RAG evaluation (backend/evaluation) against the live services —
-# Chroma Cloud, OpenAI, Cohere, Langfuse. It does NOT touch the AWS deployment;
-# it imports the pipeline and runs it on the GitHub runner.
+# Chroma Cloud, OpenAI, Cohere, Langfuse. It imports the pipeline and runs it on
+# the GitHub runner; it does NOT touch the AWS deployment.
 #
-# Every push is the full 30-item dataset (~8-20 min, ~150-210 OpenAI calls,
-# one Langfuse run per push). To cut cost/noise, either:
-#   - narrow the trigger to `push: branches: [main]` + `pull_request`, or
-#   - make the run step a smoke run:  ... run_evaluation --limit 8
+# Manual only — click "Run workflow" on the Actions tab (or `gh workflow run
+# eval.yml`). The full 30-item dataset is ~8-20 min and ~150-210 OpenAI calls,
+# so it is not wired to push/PR. To run it on a schedule instead, add e.g.
+#   schedule:
+#     - cron: "0 6 * * 1"   # 06:00 UTC every Monday
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
-# A burst of commits on one branch: keep only the newest run.
+# Don't let two manual runs on the same ref overlap.
 concurrency:
   group: eval-${{ github.ref }}
   cancel-in-progress: true
