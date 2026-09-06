@@ -25,6 +25,7 @@ from src.schemas import (
     EscalationOut,
     FeedbackRequest,
     HealthResponse,
+    IngestResponse,
     SendMessageRequest,
     WorkspaceStats,
 )
@@ -52,6 +53,29 @@ def health() -> dict:
 def workspace() -> dict:
     """Coverage summary for the right-hand pane: indexed documents and chunk count."""
     return get_workspace_stats()
+
+
+@app.post(
+    "/api/ingest",
+    response_model=IngestResponse,
+    responses={400: {"model": ErrorResponse}},
+)
+def ingest():
+    """Re-scan ``docs/`` and upsert new or changed policy PDFs into the vector store.
+
+    Runs the full pipeline synchronously (Docling parse -> chunk -> Chroma upsert).
+    The manifest means unchanged files are skipped, so a no-op re-run is fast; a
+    first run or a changed corpus can take minutes. FastAPI runs this sync handler
+    in a worker thread, so other requests keep serving while it works.
+    """
+    # Imported lazily: the ingestion stack (Docling, transformers, torch) is heavy
+    # and only this route needs it — keep it out of API startup.
+    from src.rag.ingest import run_ingestion
+
+    try:
+        return run_ingestion()
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
 
 
 @app.get("/api/conversations", response_model=list[ConversationSummary])

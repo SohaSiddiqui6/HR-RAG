@@ -58,7 +58,7 @@ backend/
 │   │   ├── retriever.py     # hybrid search (dense + BM25 + RRF) + Cohere rerank
 │   │   ├── prompts.py       # LLM prompt templates
 │   │   ├── vectorstore.py   # Chroma Cloud client + dense/sparse schema
-│   │   └── ingest.py        # Docling -> chunk -> upsert  (python -m src.rag.ingest)
+│   │   └── ingest.py        # Docling -> chunk -> upsert  (python -m src.rag.ingest | POST /api/ingest)
 │   └── db/
 │       ├── models.py        # SQLModel tables
 │       ├── session.py       # engine + get_session()
@@ -87,7 +87,7 @@ required to run the evaluation.
 ## Usage
 
 ```bash
-uv run python -m src.rag.ingest             # build / update the vector store
+uv run python -m src.rag.ingest             # build / update the vector store (also: POST /api/ingest)
 uv run python -m scripts.sanity_check "PTO carryover limit"
 uv run uvicorn src.app:app --reload         # http://localhost:8000  (/docs for the schema)
 uv run python -m evaluation.run_evaluation  # score the dataset (see evaluation/README.md)

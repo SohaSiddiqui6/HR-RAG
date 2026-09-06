@@ -4,6 +4,9 @@ Run as a module:
 
     python -m src.rag.ingest
 
+or trigger the same pipeline over HTTP with ``POST /api/ingest`` (see
+``src.app``). Both paths call :func:`run_ingestion`.
+
 A manifest (``docs/ingestion_manifest.json``) records the SHA-256 of every file
 that reached Chroma, so re-runs only process new or changed PDFs. The manifest is
 written *after* a successful upsert, never before.
@@ -117,20 +120,29 @@ def upsert(collection, records: list[dict]) -> None:
         print(f"  upserted {min(start + BATCH_SIZE, len(records))}/{len(records)}")
 
 
-def main() -> None:
+def run_ingestion() -> dict:
+    """Scan ``DOCS_DIR``, upsert new/changed PDFs, return a run summary.
+
+    Shared by the CLI (``python -m src.rag.ingest``) and ``POST /api/ingest``.
+    Unchanged files (manifest hit) are skipped, so the common case is cheap.
+    Raises ``FileNotFoundError`` when the docs directory holds no PDFs.
+    """
     pdf_paths = sorted(config.DOCS_DIR.glob("*.pdf"))
     if not pdf_paths:
-        raise SystemExit(f"No PDFs found in {config.DOCS_DIR}")
+        raise FileNotFoundError(f"No PDFs found in {config.DOCS_DIR}")
 
     manifest = load_manifest()
     chunker = build_chunker()
     collection = get_collection()
 
+    processed: list[str] = []
+    skipped: list[str] = []
     records: list[dict] = []
     for pdf_path in pdf_paths:
         digest = file_hash(pdf_path)
         if manifest.get(pdf_path.name) == digest:
             print(f"Skipping {pdf_path.name} (unchanged)")
+            skipped.append(pdf_path.name)
             continue
 
         print(f"Processing {pdf_path.name} ...")
@@ -138,15 +150,28 @@ def main() -> None:
         pdf_records = chunk_pdf(pdf_path, chunker)
         records.extend(pdf_records)
         manifest[pdf_path.name] = digest  # staged, committed after upsert
+        processed.append(pdf_path.name)
         print(f"  {len(pdf_records)} chunks in {time.time() - start:.1f}s")
 
-    if not records:
-        print(f"Nothing new to ingest. Collection count: {collection.count()}")
-        return
+    if records:
+        upsert(collection, records)
+        save_manifest(manifest)
 
-    upsert(collection, records)
-    save_manifest(manifest)
-    print(f"Done. Collection count: {collection.count()}")
+    count = collection.count()
+    print(f"Done. Collection count: {count}")
+    return {
+        "processed": processed,
+        "skipped": skipped,
+        "chunks_upserted": len(records),
+        "collection_count": count,
+    }
+
+
+def main() -> None:
+    try:
+        run_ingestion()
+    except FileNotFoundError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 if __name__ == "__main__":

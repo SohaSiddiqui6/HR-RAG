@@ -71,3 +71,10 @@ class WorkspaceStats(BaseModel):
     documents: list[str] = []
     document_count: int
     chunk_count: int
+
+
+class IngestResponse(BaseModel):
+    processed: list[str] = []  # PDFs parsed + upserted this run
+    skipped: list[str] = []  # PDFs unchanged since the last run (manifest hit)
+    chunks_upserted: int
+    collection_count: int

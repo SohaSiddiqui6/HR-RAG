@@ -263,6 +263,10 @@ flowchart LR
 - **Both indexes are populated by Chroma on write** from the chunk text — the
   sparse index is a schema property fixed at collection creation, so changing it
   means a new `COLLECTION_NAME`.
+- **Triggered two ways**, both calling `run_ingestion()`: the CLI
+  (`python -m src.rag.ingest`) or `POST /api/ingest`, which runs the same pipeline
+  synchronously and returns a `{processed, skipped, chunks_upserted,
+  collection_count}` summary.
 
 ---
 
@@ -368,6 +372,7 @@ LLM. Making it real needs request identity + access metadata on chunks.
 |---|---|---|
 | `GET` | `/api/health` | liveness |
 | `GET` | `/api/workspace` | indexed-corpus summary (welcome screen) |
+| `POST` | `/api/ingest` | re-scan `docs/` → upsert new/changed PDFs (runs the pipeline synchronously) |
 | `GET` | `/api/conversations` | list (id, title, updated_at) |
 | `POST` | `/api/conversations` | create (empty) |
 | `GET` | `/api/conversations/{id}` | full conversation + messages |
