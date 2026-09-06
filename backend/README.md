@@ -92,9 +92,14 @@ per-file SHA-256 manifest is kept in Postgres (`ingested_document`), so it
 survives redeploys and is shared across instances — truncate that table to force
 a full re-ingest.
 
+Ingestion (Docling / transformers / torch) is an **optional dependency group** —
+the serving path never imports it. Enable it for the CLI or a dedicated ingestion
+job with `uv sync --group ingestion`; without it, `POST /api/ingest` returns 501.
+
 ## Usage
 
 ```bash
+uv sync --group ingestion                   # once, to enable the ingestion stack
 uv run python -m src.rag.ingest             # build / update the vector store (also: POST /api/ingest)
 uv run python -m scripts.sanity_check "PTO carryover limit"
 uv run uvicorn src.app:app --reload         # http://localhost:8000  (/docs for the schema)

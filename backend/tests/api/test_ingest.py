@@ -1,5 +1,7 @@
 """The POST /api/ingest trigger. The real Docling -> Chroma pipeline is stubbed."""
 
+import sys
+
 import pytest
 
 # The endpoint lazily imports src.rag.ingest, which pulls in docling / transformers;
@@ -41,3 +43,12 @@ def test_ingest_400_when_no_pdfs(client, monkeypatch):
     resp = client.post("/api/ingest")
     assert resp.status_code == 400
     assert resp.json() == {"error": "No PDFs found in /app/docs"}
+
+
+def test_ingest_501_when_stack_not_installed(client, monkeypatch):
+    # Simulate the serving image, which omits the `ingestion` dependency group.
+    monkeypatch.setitem(sys.modules, "src.rag.ingest", None)
+
+    resp = client.post("/api/ingest")
+    assert resp.status_code == 501
+    assert "not available" in resp.json()["error"].lower()

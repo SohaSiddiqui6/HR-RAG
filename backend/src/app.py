@@ -6,10 +6,12 @@ Every route lives here; the streaming answer pipeline is in `src.streaming`.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
-from fastapi import Depends, FastAPI, Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session
 
 from src import guardrails, streaming, tracing
@@ -58,19 +60,27 @@ def workspace(session: Session = Depends(get_session)) -> dict:
 @app.post(
     "/api/ingest",
     response_model=IngestResponse,
-    responses={400: {"model": ErrorResponse}},
+    responses={400: {"model": ErrorResponse}, 501: {"model": ErrorResponse}},
 )
 def ingest():
-    """Re-scan ``docs/`` and upsert new or changed policy PDFs into the vector store.
+    """Re-scan the source and upsert new or changed policy PDFs into the vector store.
 
-    Runs the full pipeline synchronously (Docling parse -> chunk -> Chroma upsert).
-    The manifest means unchanged files are skipped, so a no-op re-run is fast; a
-    first run or a changed corpus can take minutes. FastAPI runs this sync handler
-    in a worker thread, so other requests keep serving while it works.
+    Runs the full pipeline synchronously (fetch -> Docling parse -> chunk -> Chroma
+    upsert). The manifest means unchanged files are skipped, so a no-op re-run is
+    fast; a first run or a changed corpus can take minutes. FastAPI runs this sync
+    handler in a worker thread, so other requests keep serving while it works.
+
+    The ingestion stack (Docling, transformers, torch) is an optional dependency
+    group — the serving image skips it, so this returns **501** there and
+    ingestion runs as a separate job (`uv sync --group ingestion` + the CLI).
     """
-    # Imported lazily: the ingestion stack (Docling, transformers, torch) is heavy
-    # and only this route needs it — keep it out of API startup.
-    from src.rag.ingest import run_ingestion
+    try:
+        from src.rag.ingest import run_ingestion  # heavy — imported lazily
+    except ImportError:
+        return JSONResponse(
+            status_code=501,
+            content={"error": "Ingestion not available in this deployment."},
+        )
 
     try:
         return run_ingestion()
@@ -167,6 +177,22 @@ def submit_feedback(payload: FeedbackRequest):
 def delete_conversation(conversation_id: str, session: Session = Depends(get_session)):
     store.delete_conversation(session, conversation_id)
     return Response(status_code=204)
+
+
+# --- Static SPA ---------------------------------------------------------------
+# In the Docker image the built frontend is copied to `backend/static/`; FastAPI
+# then serves the whole app from one origin. In dev this directory doesn't exist
+# and the Vite server handles the UI, so this block is a no-op.
+_STATIC = Path(__file__).resolve().parent.parent / "static"
+if _STATIC.is_dir():
+    app.mount("/assets", StaticFiles(directory=_STATIC / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa(path: str) -> FileResponse:
+        if path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        file = _STATIC / path
+        return FileResponse(file if file.is_file() else _STATIC / "index.html")
 
 
 if __name__ == "__main__":

@@ -1369,7 +1369,6 @@ source = { virtual = "." }
 dependencies = [
     { name = "chromadb" },
     { name = "cohere" },
-    { name = "docling" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "langchain" },
@@ -1380,11 +1379,9 @@ dependencies = [
     { name = "langfuse" },
     { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
-    { name = "pymupdf" },
     { name = "python-dotenv" },
     { name = "snowballstemmer" },
     { name = "sqlmodel" },
-    { name = "transformers" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1392,12 +1389,16 @@ dependencies = [
 dev = [
     { name = "pytest" },
 ]
+ingestion = [
+    { name = "docling" },
+    { name = "pymupdf" },
+    { name = "transformers" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "chromadb", specifier = ">=1.4,<2" },
     { name = "cohere", specifier = ">=5.5,<6" },
-    { name = "docling", specifier = ">=2.0,<3" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "langchain", specifier = ">=0.3,<0.4" },
@@ -1408,16 +1409,19 @@ requires-dist = [
     { name = "langfuse", specifier = ">=4.15,<5" },
     { name = "openai", specifier = ">=1.30,<2" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
-    { name = "pymupdf", specifier = ">=1.24,<2" },
     { name = "python-dotenv", specifier = ">=1.0,<2" },
     { name = "snowballstemmer", specifier = ">=2.2,<3" },
     { name = "sqlmodel", specifier = ">=0.0.24,<1" },
-    { name = "transformers", specifier = ">=4.40,<5" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30,<1" },
 ]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.0,<9" }]
+ingestion = [
+    { name = "docling", specifier = ">=2.0,<3" },
+    { name = "pymupdf", specifier = ">=1.24,<2" },
+    { name = "transformers", specifier = ">=4.40,<5" },
+]
 
 [[package]]
 name = "httpcore"

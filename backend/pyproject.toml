@@ -8,10 +8,6 @@ dependencies = [
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.30,<1",
     "python-dotenv>=1.0,<2",
-    # ingestion (Docling PDF parsing + chunking)
-    "docling>=2.0,<3",
-    "transformers>=4.40,<5",
-    "pymupdf>=1.24,<2",
     # vector store (Chroma Cloud, dense + sparse/BM25)
     "chromadb>=1.4,<2",  # server-side hybrid Search API (Search/Knn/Rrf/Schema)
     "snowballstemmer>=2.2,<3",
@@ -35,6 +31,15 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0,<9",
+]
+# Ingestion only — Docling / transformers / PyMuPDF pull in torch (~2 GB) and the
+# request path never imports them. The serving image skips this group; run
+# `uv sync --group ingestion` locally (or in a dedicated ingestion job) to enable
+# `python -m src.rag.ingest` and `POST /api/ingest`.
+ingestion = [
+    "docling>=2.0,<3",
+    "transformers>=4.40,<5",
+    "pymupdf>=1.24,<2",
 ]
 
 [tool.uv]
