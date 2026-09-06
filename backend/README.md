@@ -15,6 +15,16 @@ policies" without an LLM call.
 follow-up, the last few turns are condensed into a standalone query before
 retrieval, so pronouns and "what about…" questions resolve (`HISTORY_TURNS`).
 
+**Guardrails** (`src/guardrails/`) wrap the pipeline without touching it:
+`check_input` runs before retrieval (empty / length / off-topic / prompt
+injection → HTTP 400; greetings get a canned reply with no retrieval);
+`check_output` runs on the finished answer before it is
+stored (empty → fallback, fabricated citations stripped, obviously ungrounded
+answers replaced, secrets redacted, length capped) and returns a validated
+`{answer, citations, answerable}`. Retrieved chunks are treated as untrusted data
+(prompt boundary + injection scrub). `authorization.py` is where tenant/role
+retrieval filtering plugs in once auth exists.
+
 ## Structure
 
 ```
@@ -23,8 +33,11 @@ backend/
 │   ├── config.py            # settings from .env
 │   ├── app.py               # FastAPI app + routes
 │   ├── schemas.py           # request / response models (the API contract)
-│   ├── guardrails.py        # input / output checks
 │   ├── tracing.py           # Langfuse callback (no-op without keys)
+│   ├── guardrails/
+│   │   ├── input.py         # empty / length / off-topic / prompt-injection / small-talk
+│   │   ├── output.py        # empty / length / citation / grounding / secret redaction
+│   │   └── authorization.py # retrieval tenant/role filter boundary (stub — no auth yet)
 │   ├── rag/
 │   │   ├── chain.py         # condense + hybrid retrieve + Cohere rerank + generate
 │   │   ├── vectorstore.py   # Chroma Cloud client + dense/sparse schema

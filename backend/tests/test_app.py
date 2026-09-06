@@ -23,7 +23,7 @@ def test_stream_rejects_empty_question(client):
     cid = _new_conversation(client)
     resp = client.post(f"/api/conversations/{cid}/messages/stream", json={"question": ""})
     assert resp.status_code == 400
-    assert resp.json() == {"error": "Question is empty."}
+    assert "question" in resp.json()["error"].lower()
 
 
 def test_stream_rejects_prompt_injection(client):

@@ -52,6 +52,8 @@ def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
     for follow-up context, persists the user message up front, and persists the
     assistant message once generation completes.
     """
+    where = guardrails.where_filter(guardrails.retrieval_context())
+
     with Session(get_engine()) as session:
         history = [
             (m.role, m.content)
@@ -63,7 +65,7 @@ def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
         try:
             answer: Answer | None = None
             for item in stream_answer(
-                question, history=history, run_config=trace_config()
+                question, history=history, where=where, run_config=trace_config()
             ):
                 if isinstance(item, Answer):
                     answer = item
@@ -71,11 +73,17 @@ def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
                     yield _sse("token", text=item)
             assert answer is not None  # stream_answer always ends with an Answer
 
+            guarded = guardrails.check_output(
+                answer.text,
+                sources=answer.sources,
+                contexts=answer.contexts,
+                abstained=not answer.sources,
+            )
             store.add_message(
                 session,
                 conversation_id,
                 "assistant",
-                guardrails.check_answer(answer.text),
+                guarded.answer,
                 sources=answer.sources,
             )
             store.set_title_if_default(session, conversation_id, question)
@@ -131,7 +139,7 @@ def stream_message(
     if store.get_conversation(session, conversation_id) is None:
         return _not_found()
 
-    ok, reason = guardrails.check_question(payload.question)
+    ok, reason = guardrails.check_input(payload.question)
     if not ok:
         return JSONResponse(status_code=400, content={"error": reason})
 

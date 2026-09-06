@@ -36,6 +36,8 @@ SPARSE_KEY = os.getenv("SPARSE_KEY", "sparse_embedding")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "rerank-v3.5")
+# Generation-time answer cap (the output guardrail keeps a hard char limit too).
+MAX_ANSWER_TOKENS = int(os.getenv("MAX_ANSWER_TOKENS", "800"))
 
 # --- Chunking ----------------------------------------------------------
 CHUNK_TOKENIZER = os.getenv("CHUNK_TOKENIZER", "sentence-transformers/all-MiniLM-L6-v2")

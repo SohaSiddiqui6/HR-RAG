@@ -10,10 +10,14 @@ from src.rag.chain import Answer
 SOURCES = [{"source": "pto-and-leave-policy.pdf", "page_no": 1, "headings": "2.2"}]
 
 
-def _fake_stream(question, history=None, run_config=None):
+def _fake_stream(question, history=None, run_config=None, where=None):
     yield "5 days "
     yield "[pto-and-leave-policy]"
-    yield Answer(text="5 days [pto-and-leave-policy]", sources=SOURCES)
+    yield Answer(
+        text="5 days carryover [pto-and-leave-policy]",
+        sources=SOURCES,
+        contexts=["PTO carryover is capped at 5 days."],
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -82,7 +86,7 @@ def test_follow_up_appends_to_the_conversation(client):
 def test_follow_up_passes_recent_history_to_the_chain(client, monkeypatch):
     seen: dict = {}
 
-    def _capture(question, history=None, run_config=None):
+    def _capture(question, history=None, run_config=None, where=None):
         seen["history"] = history
         yield "ok"
         yield Answer(text="ok", sources=[])
