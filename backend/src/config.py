@@ -22,6 +22,8 @@ LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 # --- Conversation store ----------------------------------------------------
 # Postgres (Supabase) connection string. Tests override this with sqlite://.
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+# Recent messages replayed as context for follow-up questions (0 disables it).
+HISTORY_TURNS = int(os.getenv("HISTORY_TURNS", "4"))
 
 # --- Chroma Cloud ----------------------------------------------------------
 CHROMA_DATABASE = os.getenv("CHROMA_DATABASE", "production-rag")

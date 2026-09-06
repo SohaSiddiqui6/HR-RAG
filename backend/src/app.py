@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import Session
 
-from src import guardrails
+from src import config, guardrails
 from src.db import store
 from src.db.session import get_engine, get_session, init_db
 from src.rag.chain import Answer, stream_answer
@@ -48,14 +48,23 @@ def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
     """SSE event stream: `token`* then `done`, or an `error` event on failure.
 
     Runs after the response has started, so it opens its own DB session (the
-    request-scoped one from `Depends` is already closed). Persists the user
-    message up front and the assistant message once generation completes.
+    request-scoped one from `Depends` is already closed). Reads recent history
+    for follow-up context, persists the user message up front, and persists the
+    assistant message once generation completes.
     """
     with Session(get_engine()) as session:
+        history = [
+            (m.role, m.content)
+            for m in store.recent_messages(
+                session, conversation_id, config.HISTORY_TURNS
+            )
+        ]
         store.add_message(session, conversation_id, "user", question)
         try:
             answer: Answer | None = None
-            for item in stream_answer(question, run_config=trace_config()):
+            for item in stream_answer(
+                question, history=history, run_config=trace_config()
+            ):
                 if isinstance(item, Answer):
                     answer = item
                 else:

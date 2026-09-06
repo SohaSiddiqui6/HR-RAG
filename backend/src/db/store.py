@@ -43,6 +43,21 @@ def add_message(
     return message
 
 
+def recent_messages(
+    session: Session, conversation_id: str, limit: int
+) -> list[Message]:
+    """The last ``limit`` messages of a conversation, oldest first."""
+    if limit <= 0:
+        return []
+    stmt = (
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.desc())  # type: ignore[attr-defined]
+        .limit(limit)
+    )
+    return list(reversed(session.exec(stmt).all()))
+
+
 def set_title_if_default(session: Session, conversation_id: str, title: str) -> None:
     conversation = session.get(Conversation, conversation_id)
     if conversation and conversation.title == DEFAULT_TITLE:

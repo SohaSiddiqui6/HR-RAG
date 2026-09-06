@@ -10,7 +10,7 @@ from src.rag.chain import Answer
 SOURCES = [{"source": "pto-and-leave-policy.pdf", "page_no": 1, "headings": "2.2"}]
 
 
-def _fake_stream(question, run_config=None):
+def _fake_stream(question, history=None, run_config=None):
     yield "5 days "
     yield "[pto-and-leave-policy]"
     yield Answer(text="5 days [pto-and-leave-policy]", sources=SOURCES)
@@ -77,6 +77,26 @@ def test_follow_up_appends_to_the_conversation(client):
     _ask(client, cid, "second")
 
     assert len(client.get(f"/api/conversations/{cid}").json()["messages"]) == 4
+
+
+def test_follow_up_passes_recent_history_to_the_chain(client, monkeypatch):
+    seen: dict = {}
+
+    def _capture(question, history=None, run_config=None):
+        seen["history"] = history
+        yield "ok"
+        yield Answer(text="ok", sources=[])
+
+    monkeypatch.setattr(app_module, "stream_answer", _capture)
+
+    cid = _new_conversation(client)
+    _ask(client, cid, "what is the PTO carryover limit?")
+    _ask(client, cid, "what about interns?")
+
+    assert seen["history"] == [
+        ("user", "what is the PTO carryover limit?"),
+        ("assistant", "ok"),
+    ]
 
 
 def test_delete_removes_conversation_and_messages(client):

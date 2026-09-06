@@ -11,7 +11,9 @@ fused with RRF**, get reranked by **Cohere**, and the top chunks go to
 relevance threshold the question is out of scope and answered "not in the
 policies" without an LLM call.
 
-**Conversations** are persisted in Postgres (Supabase) via SQLModel.
+**Conversations** are persisted in Postgres (Supabase) via SQLModel. On a
+follow-up, the last few turns are condensed into a standalone query before
+retrieval, so pronouns and "what about…" questions resolve (`HISTORY_TURNS`).
 
 ## Structure
 
@@ -24,7 +26,7 @@ backend/
 │   ├── guardrails.py        # input / output checks
 │   ├── tracing.py           # Langfuse callback (no-op without keys)
 │   ├── rag/
-│   │   ├── chain.py         # hybrid retriever + Cohere rerank + answer generation
+│   │   ├── chain.py         # condense + hybrid retrieve + Cohere rerank + generate
 │   │   ├── vectorstore.py   # Chroma Cloud client + dense/sparse schema
 │   │   └── ingest.py        # Docling -> chunk -> upsert  (python -m src.rag.ingest)
 │   └── db/

@@ -35,18 +35,34 @@ MISSING_RANK = 1000  # rank for docs absent from one of the two rankings
 # Returned verbatim when retrieval finds nothing relevant (see RELEVANCE_THRESHOLD).
 NO_ANSWER = "I don't have information about that in the available HR policies."
 
+# Recent conversation turns, oldest first: (role, content).
+History = list[tuple[str, str]]
+
 PROMPT = ChatPromptTemplate.from_template(
     """Use the following pieces of context to answer the question at the end.
 If you don't know the answer, just say that you don't know, don't try to make up an answer.
 Cite each fact inline in square brackets using the source name, e.g. [remote-work-policy].
 Do not invent citations.
 
-Context:
+{history}Context:
 {context}
 
 Question: {question}
 
 Helpful Answer:"""
+)
+
+CONDENSE_PROMPT = ChatPromptTemplate.from_template(
+    """Given the conversation so far and a follow-up question, rewrite the follow-up
+as a standalone question that can be understood without the conversation.
+If it is already standalone, or starts a new topic, return it unchanged.
+Return only the question.
+
+Conversation:
+{history}
+
+Follow-up: {question}
+Standalone question:"""
 )
 
 
@@ -175,20 +191,57 @@ def _sources(docs: List[Document]) -> List[dict]:
     ]
 
 
-def answer_question(question: str, run_config: RunnableConfig | None = None) -> Answer:
+def _transcript(history: History) -> str:
+    labels = {"user": "User", "assistant": "Assistant"}
+    return "\n".join(f"{labels.get(role, role)}: {text}" for role, text in history)
+
+
+def _history_block(history: History) -> str:
+    """The `{history}` slot in ``PROMPT`` — empty when there is no history."""
+    if not history:
+        return ""
+    return f"Earlier in this conversation (for context only):\n{_transcript(history)}\n\n"
+
+
+def _condense(
+    question: str, history: History, run_config: RunnableConfig | None
+) -> str:
+    """Rewrite a follow-up into a standalone query for retrieval. No-op without history."""
+    if not history:
+        return question
+    response = get_llm().invoke(
+        CONDENSE_PROMPT.format_messages(
+            history=_transcript(history), question=question
+        ),
+        config=run_config,
+    )
+    return str(response.content).strip() or question
+
+
+def answer_question(
+    question: str,
+    history: History | None = None,
+    run_config: RunnableConfig | None = None,
+) -> Answer:
     """Retrieve, rerank, and generate a grounded, cited answer.
 
-    If no retrieved chunk clears ``RELEVANCE_THRESHOLD`` the question is out of
-    scope and ``NO_ANSWER`` is returned without calling the LLM. ``run_config`` is
-    a LangChain config (e.g. ``{"callbacks": [...]}``) threaded into every model
-    call so the chain can be traced.
+    On a follow-up (``history`` non-empty) the question is first condensed into a
+    standalone query for retrieval; generation still sees the original question
+    plus the recent turns. If no retrieved chunk clears ``RELEVANCE_THRESHOLD``
+    the question is out of scope and ``NO_ANSWER`` is returned without generating.
+    ``run_config`` is a LangChain config threaded into every model call for tracing.
     """
-    docs = _relevant_docs(question, run_config)
+    history = history or []
+    docs = _relevant_docs(_condense(question, history, run_config), run_config)
     if not docs:
         return Answer(text=NO_ANSWER)
 
     response = get_llm().invoke(
-        PROMPT.format_messages(context=_format_docs(docs), question=question),
+        PROMPT.format_messages(
+            history=_history_block(history),
+            context=_format_docs(docs),
+            question=question,
+        ),
         config=run_config,
     )
     return Answer(
@@ -199,21 +252,28 @@ def answer_question(question: str, run_config: RunnableConfig | None = None) -> 
 
 
 def stream_answer(
-    question: str, run_config: RunnableConfig | None = None
+    question: str,
+    history: History | None = None,
+    run_config: RunnableConfig | None = None,
 ) -> Iterator[str | Answer]:
-    """Same retrieval + abstention rules as ``answer_question``, streamed.
+    """Same retrieval + abstention + condensing rules as ``answer_question``, streamed.
 
     Yields answer text token-by-token, then a final :class:`Answer` carrying the
     full text plus sources and contexts. The out-of-scope path yields
     ``NO_ANSWER`` as a single chunk.
     """
-    docs = _relevant_docs(question, run_config)
+    history = history or []
+    docs = _relevant_docs(_condense(question, history, run_config), run_config)
     if not docs:
         yield NO_ANSWER
         yield Answer(text=NO_ANSWER)
         return
 
-    messages = PROMPT.format_messages(context=_format_docs(docs), question=question)
+    messages = PROMPT.format_messages(
+        history=_history_block(history),
+        context=_format_docs(docs),
+        question=question,
+    )
     parts: List[str] = []
     for chunk in get_llm().stream(messages, config=run_config):
         text = str(chunk.content)
