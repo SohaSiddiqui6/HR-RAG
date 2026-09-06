@@ -25,6 +25,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 # Recent messages replayed as context for follow-up questions (0 disables it).
 HISTORY_TURNS = int(os.getenv("HISTORY_TURNS", "4"))
 
+# --- Escalation (human handoff) -------------------------------------------
+# "none" (default, logs only) or "slack".
+ESCALATION_BACKEND = os.getenv("ESCALATION_BACKEND", "none")
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
+
 # --- Chroma Cloud ----------------------------------------------------------
 CHROMA_DATABASE = os.getenv("CHROMA_DATABASE", "production-rag")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "research_papers_hybrid")
@@ -50,9 +55,13 @@ DENSE_WEIGHT = float(os.getenv("DENSE_WEIGHT", "0.6"))
 SPARSE_WEIGHT = float(os.getenv("SPARSE_WEIGHT", "0.4"))
 RERANK_TOP_N = int(os.getenv("RERANK_TOP_N", "5"))
 # Drop reranked chunks below this Cohere relevance score. If nothing clears it,
-# the question is treated as out of scope and answered with a fixed refusal
-# (no LLM call) rather than trusting the model to abstain.
+# the question is not answered from the docs (no LLM call) rather than trusting
+# the model to abstain.
 RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "0.3"))
+# When nothing clears RELEVANCE_THRESHOLD but the top chunk still scores at least
+# this, the question looks HR-related-but-uncovered -> offer a human handoff.
+# Below it, the question is treated as out of scope.
+ESCALATION_FLOOR = float(os.getenv("ESCALATION_FLOOR", "0.08"))
 # Cohere trial keys allow only 10 requests/minute; retry the rerank on a 429
 # with linear backoff (base_delay, 2*base_delay, ...) instead of failing.
 RERANK_MAX_RETRIES = int(os.getenv("RERANK_MAX_RETRIES", "5"))

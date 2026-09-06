@@ -88,6 +88,7 @@ export function useConversation(conversationId?: string) {
     streamingText,
     isPending: mutation.isPending,
     isLoading: query.isLoading,
+    loadFailed: query.isError,
     send,
   };
 }

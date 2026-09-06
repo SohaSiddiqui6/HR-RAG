@@ -1,7 +1,9 @@
 import type {
   Conversation,
   ConversationSummary,
+  Escalation,
   Message,
+  MessageOutcome,
   Source,
 } from "@/types/conversation";
 import { apiClient } from "@/lib/api-client";
@@ -14,11 +16,19 @@ interface SourceDto {
   headings: string | null;
 }
 
+interface EscalationDto {
+  channel: string;
+  reference: string | null;
+  url: string | null;
+}
+
 interface MessageDto {
   id: string;
   role: Message["role"];
   content: string;
   sources: SourceDto[];
+  outcome: MessageOutcome;
+  escalation: EscalationDto | null;
   created_at: string;
 }
 
@@ -46,6 +56,14 @@ export function toSource(dto: SourceDto): Source {
   };
 }
 
+function toEscalation(dto: EscalationDto): Escalation {
+  return {
+    channel: dto.channel,
+    reference: dto.reference ?? undefined,
+    url: dto.url ?? undefined,
+  };
+}
+
 export function toMessage(dto: MessageDto): Message {
   return {
     id: dto.id,
@@ -53,6 +71,8 @@ export function toMessage(dto: MessageDto): Message {
     content: dto.content,
     createdAt: dto.created_at,
     sources: dto.sources.map(toSource),
+    outcome: dto.outcome,
+    escalation: dto.escalation ? toEscalation(dto.escalation) : undefined,
   };
 }
 

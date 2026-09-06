@@ -1,4 +1,4 @@
-"""Offline tests for answer_question: the abstention floor and follow-up condensing."""
+"""Offline tests for answer_question: the no-answer outcomes and follow-up condensing."""
 
 from types import SimpleNamespace
 
@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 
 from src import config
 from src.rag import chain as rag_chain
+from src.rag.chain import Outcome
 
 
 def _doc(score):
@@ -34,16 +35,37 @@ def _capturing_retrieve(sink: list[str]):
     return _retrieve
 
 
-def test_abstains_when_no_chunk_clears_threshold(monkeypatch):
-    below = config.RELEVANCE_THRESHOLD - 0.05
-    monkeypatch.setattr(rag_chain, "retrieve", lambda *a, **k: [_doc(below), _doc(below)])
+def test_needs_human_when_related_but_below_threshold(monkeypatch):
+    # top chunk is HR-ish (>= ESCALATION_FLOOR) but doesn't clear RELEVANCE_THRESHOLD
+    score = (config.ESCALATION_FLOOR + config.RELEVANCE_THRESHOLD) / 2
+    monkeypatch.setattr(rag_chain, "retrieve", lambda *a, **k: [_doc(score), _doc(0.01)])
     monkeypatch.setattr(rag_chain, "get_llm", _no_llm)
 
-    answer = rag_chain.answer_question("something out of scope")
+    answer = rag_chain.answer_question("do we reimburse standing desks?")
 
-    assert answer.text == rag_chain.NO_ANSWER
+    assert answer.outcome is Outcome.NEEDS_HUMAN
+    assert answer.text == rag_chain.NEEDS_HUMAN_ANSWER
     assert answer.sources == []
-    assert answer.contexts == []
+
+
+def test_out_of_scope_when_nothing_is_related(monkeypatch):
+    monkeypatch.setattr(rag_chain, "retrieve", lambda *a, **k: [_doc(0.02), _doc(0.01)])
+    monkeypatch.setattr(rag_chain, "get_llm", _no_llm)
+
+    answer = rag_chain.answer_question("what is the capital of France?")
+
+    assert answer.outcome is Outcome.OUT_OF_SCOPE
+    assert answer.text == rag_chain.NO_ANSWER
+
+
+def test_answered_outcome_on_the_happy_path(monkeypatch):
+    monkeypatch.setattr(rag_chain, "retrieve", lambda *a, **k: [_doc(0.9)])
+    monkeypatch.setattr(rag_chain, "get_llm", lambda: _FakeLLM("Five days [x]."))
+
+    answer = rag_chain.answer_question("PTO carryover?")
+
+    assert answer.outcome is Outcome.ANSWERED
+    assert answer.sources
 
 
 def test_no_history_retrieves_on_the_raw_question(monkeypatch):

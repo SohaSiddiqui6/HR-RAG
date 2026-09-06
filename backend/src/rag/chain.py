@@ -12,6 +12,7 @@ import functools
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, List, Optional
 
 from chromadb import K, Knn, Rrf, Search
@@ -33,8 +34,21 @@ from src.rag.vectorstore import get_collection
 RRF_K = 60
 MISSING_RANK = 1000  # rank for docs absent from one of the two rankings
 
-# Returned verbatim when retrieval finds nothing relevant (see RELEVANCE_THRESHOLD).
+class Outcome(str, Enum):
+    """What the pipeline decided to do with a question."""
+
+    ANSWERED = "answered"
+    NEEDS_HUMAN = "needs_human"  # HR-related but not in the docs -> offer a handoff
+    OUT_OF_SCOPE = "out_of_scope"  # nothing related in the docs
+
+
+# Returned verbatim when retrieval finds nothing related (out of scope).
 NO_ANSWER = "I don't have information about that in the available HR policies."
+# Returned when the question looks HR-related but the policies don't cover it.
+NEEDS_HUMAN_ANSWER = (
+    "I couldn't find this in the current HR policies. You can open a request and "
+    "the HR team will follow up."
+)
 
 # Recent conversation turns, oldest first: (role, content).
 History = list[tuple[str, str]]
@@ -129,6 +143,7 @@ class ChromaHybridRetriever(BaseRetriever):
 @dataclass
 class Answer:
     text: str
+    outcome: Outcome = Outcome.ANSWERED
     sources: List[dict] = field(default_factory=list)
     contexts: List[str] = field(default_factory=list)
 
@@ -190,15 +205,34 @@ def retrieve(
     raise RuntimeError("unreachable: RERANK_MAX_RETRIES must be >= 1")
 
 
-def _relevant_docs(
-    question: str, run_config: RunnableConfig | None, where: Any | None = None
-) -> List[Document]:
-    """Retrieve + rerank, keeping only chunks above the relevance floor."""
-    return [
+@dataclass
+class _Retrieval:
+    docs: List[Document]  # cleared the relevance floor; empty means "no answer"
+    outcome: Outcome
+
+
+def _retrieve_relevant(
+    query: str, run_config: RunnableConfig | None, where: Any | None
+) -> _Retrieval:
+    """Retrieve + rerank, then classify: answerable / needs a human / out of scope."""
+    ranked = retrieve(query, run_config, where)
+    kept = [
         d
-        for d in retrieve(question, run_config, where)
+        for d in ranked
         if d.metadata.get("relevance_score", 0.0) >= config.RELEVANCE_THRESHOLD
     ]
+    if kept:
+        return _Retrieval(kept, Outcome.ANSWERED)
+
+    top = max((d.metadata.get("relevance_score", 0.0) for d in ranked), default=0.0)
+    outcome = (
+        Outcome.NEEDS_HUMAN if top >= config.ESCALATION_FLOOR else Outcome.OUT_OF_SCOPE
+    )
+    return _Retrieval([], outcome)
+
+
+def _no_answer_text(outcome: Outcome) -> str:
+    return NEEDS_HUMAN_ANSWER if outcome is Outcome.NEEDS_HUMAN else NO_ANSWER
 
 
 def _sources(docs: List[Document]) -> List[dict]:
@@ -250,31 +284,32 @@ def answer_question(
     On a follow-up (``history`` non-empty) the question is first condensed into a
     standalone query for retrieval; generation still sees the original question
     plus the recent turns. If no retrieved chunk clears ``RELEVANCE_THRESHOLD``
-    the question is out of scope and ``NO_ANSWER`` is returned without generating.
-    ``where`` is the retrieval authorization filter; ``run_config`` is threaded
-    into every model call for tracing.
+    the answer carries a ``needs_human`` / ``out_of_scope`` outcome instead of a
+    generated response. ``where`` is the retrieval authorization filter;
+    ``run_config`` is threaded into every model call for tracing.
     """
     small_talk = smalltalk_reply(question)
     if small_talk is not None:
         return Answer(text=small_talk)
 
     history = history or []
-    docs = _relevant_docs(_condense(question, history, run_config), run_config, where)
-    if not docs:
-        return Answer(text=NO_ANSWER)
+    query = _condense(question, history, run_config)
+    result = _retrieve_relevant(query, run_config, where)
+    if not result.docs:
+        return Answer(text=_no_answer_text(result.outcome), outcome=result.outcome)
 
     response = get_llm().invoke(
         PROMPT.format_messages(
             history=_history_block(history),
-            context=_format_docs(docs),
+            context=_format_docs(result.docs),
             question=question,
         ),
         config=run_config,
     )
     return Answer(
         text=str(response.content),
-        sources=_sources(docs),
-        contexts=[d.page_content for d in docs],
+        sources=_sources(result.docs),
+        contexts=[d.page_content for d in result.docs],
     )
 
 
@@ -287,8 +322,8 @@ def stream_answer(
     """Same retrieval + abstention + condensing rules as ``answer_question``, streamed.
 
     Yields answer text token-by-token, then a final :class:`Answer` carrying the
-    full text plus sources and contexts. The out-of-scope path yields
-    ``NO_ANSWER`` as a single chunk.
+    full text, sources, and outcome. The no-answer paths yield their fixed text
+    as a single chunk.
     """
     small_talk = smalltalk_reply(question)
     if small_talk is not None:
@@ -297,15 +332,17 @@ def stream_answer(
         return
 
     history = history or []
-    docs = _relevant_docs(_condense(question, history, run_config), run_config, where)
-    if not docs:
-        yield NO_ANSWER
-        yield Answer(text=NO_ANSWER)
+    query = _condense(question, history, run_config)
+    result = _retrieve_relevant(query, run_config, where)
+    if not result.docs:
+        text = _no_answer_text(result.outcome)
+        yield text
+        yield Answer(text=text, outcome=result.outcome)
         return
 
     messages = PROMPT.format_messages(
         history=_history_block(history),
-        context=_format_docs(docs),
+        context=_format_docs(result.docs),
         question=question,
     )
     parts: List[str] = []
@@ -317,6 +354,6 @@ def stream_answer(
 
     yield Answer(
         text="".join(parts),
-        sources=_sources(docs),
-        contexts=[d.page_content for d in docs],
+        sources=_sources(result.docs),
+        contexts=[d.page_content for d in result.docs],
     )

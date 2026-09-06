@@ -1371,6 +1371,7 @@ dependencies = [
     { name = "cohere" },
     { name = "docling" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain" },
     { name = "langchain-cohere" },
     { name = "langchain-community" },
@@ -1389,7 +1390,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
 ]
 
@@ -1399,6 +1399,7 @@ requires-dist = [
     { name = "cohere", specifier = ">=5.5,<6" },
     { name = "docling", specifier = ">=2.0,<3" },
     { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "langchain", specifier = ">=0.3,<0.4" },
     { name = "langchain-cohere", specifier = ">=0.3,<0.4" },
     { name = "langchain-community", specifier = ">=0.3,<0.4" },
@@ -1416,10 +1417,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.27,<1" },
-    { name = "pytest", specifier = ">=8.0,<9" },
-]
+dev = [{ name = "pytest", specifier = ">=8.0,<9" }]
 
 [[package]]
 name = "httpcore"

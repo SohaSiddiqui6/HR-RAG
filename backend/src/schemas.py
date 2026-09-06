@@ -21,11 +21,19 @@ class SourceOut(BaseModel):
     headings: str | None = None
 
 
+class EscalationOut(BaseModel):
+    channel: str  # "slack" | "log"
+    reference: str | None = None
+    url: str | None = None
+
+
 class MessageOut(BaseModel):
     id: str
     role: str
     content: str
     sources: list[SourceOut] = []
+    outcome: str = "answered"
+    escalation: EscalationOut | None = None
     created_at: datetime
 
 
@@ -45,6 +53,12 @@ class ConversationRead(BaseModel):
 
 class SendMessageRequest(BaseModel):
     question: str = ""
+
+
+class CreateEscalationRequest(BaseModel):
+    message_id: str
+    subject: str
+    body: str = ""
 
 
 class WorkspaceStats(BaseModel):

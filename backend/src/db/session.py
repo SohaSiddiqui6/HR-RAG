@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, inspect
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -47,7 +47,38 @@ def reset_engine() -> None:
 
 
 def init_db() -> None:
-    SQLModel.metadata.create_all(get_engine())
+    engine = get_engine()
+    SQLModel.metadata.create_all(engine)
+    _add_missing_columns(engine)
+
+
+# Columns added after a table was first created. `create_all` only creates whole
+# tables, so on an existing DB these need adding explicitly. Forward-only and
+# idempotent — enough for a project this size without a migration tool.
+_ADDED_COLUMNS: dict[str, dict[str, str]] = {
+    "message": {
+        "outcome": "VARCHAR NOT NULL DEFAULT 'answered'",
+        "escalation": "JSON",  # JSONB on Postgres (see below)
+    },
+}
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    is_postgres = engine.dialect.name == "postgresql"
+
+    for table, columns in _ADDED_COLUMNS.items():
+        if table not in tables:
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table)}
+        with engine.begin() as conn:
+            for name, ddl in columns.items():
+                if name in existing:
+                    continue
+                if is_postgres:
+                    ddl = ddl.replace("JSON", "JSONB")
+                conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
 def get_session() -> Iterator[Session]:

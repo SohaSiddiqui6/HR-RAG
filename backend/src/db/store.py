@@ -30,13 +30,31 @@ def add_message(
     role: str,
     content: str,
     sources: list[dict] | None = None,
+    outcome: str = "answered",
 ) -> Message:
     message = Message(
         conversation_id=conversation_id,
         role=role,
         content=content,
         sources=sources or [],
+        outcome=outcome,
     )
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+    return message
+
+
+def get_message(session: Session, message_id: str) -> Message | None:
+    return session.get(Message, message_id)
+
+
+def set_escalation(session: Session, message_id: str, data: dict) -> Message | None:
+    """Record the handoff outcome (`{channel, reference, url}`) on a message."""
+    message = session.get(Message, message_id)
+    if message is None:
+        return None
+    message.escalation = data
     session.add(message)
     session.commit()
     session.refresh(message)

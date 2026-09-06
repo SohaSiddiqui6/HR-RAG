@@ -7,9 +7,11 @@ plus conversation history.
 them → chunks are upserted to a **Chroma Cloud** collection with a dense (OpenAI)
 and a sparse (BM25) index side by side → queries run **server-side hybrid search
 fused with RRF**, get reranked by **Cohere**, and the top chunks go to
-**GPT-4o-mini** for a grounded, cited answer. If no reranked chunk clears a
-relevance threshold the question is out of scope and answered "not in the
-policies" without an LLM call.
+**GPT-4o-mini** for a grounded, cited answer. If no reranked chunk clears the
+relevance threshold, the max rerank score decides the outcome: an HR-related but
+uncovered question (`>= ESCALATION_FLOOR`) is marked `needs_human` and the UI
+offers a handoff to a person; anything lower is `out_of_scope` and declined. No
+LLM call on either path.
 
 **Conversations** are persisted in Postgres (Supabase) via SQLModel. On a
 follow-up, the last few turns are condensed into a standalone query before
@@ -25,6 +27,13 @@ answers replaced, secrets redacted, length capped) and returns a validated
 (prompt boundary + injection scrub). `authorization.py` is where tenant/role
 retrieval filtering plugs in once auth exists.
 
+**Escalation** (`src/escalation/`) — a `needs_human` answer can be handed to a
+person via `POST /api/conversations/{id}/escalation` (one per message, idempotent).
+`get_escalation()` selects the backend from `ESCALATION_BACKEND`: `NullEscalation`
+(default, logs only) or `SlackEscalation` (incoming webhook). A new backend
+(Jira, email) is one file implementing `submit()`. The decision to escalate is
+deterministic (the score threshold above) — the model isn't in that loop.
+
 ## Structure
 
 ```
@@ -38,6 +47,10 @@ backend/
 │   │   ├── input.py         # empty / length / off-topic / prompt-injection / small-talk
 │   │   ├── output.py        # empty / length / citation / grounding / secret redaction
 │   │   └── authorization.py # retrieval tenant/role filter boundary (stub — no auth yet)
+│   ├── escalation/
+│   │   ├── __init__.py     # Escalation protocol + get_escalation()
+│   │   ├── null.py         # default — logs only
+│   │   └── slack.py        # incoming-webhook notification
 │   ├── rag/
 │   │   ├── chain.py         # condense + hybrid retrieve + Cohere rerank + generate
 │   │   ├── vectorstore.py   # Chroma Cloud client + dense/sparse schema
@@ -49,7 +62,7 @@ backend/
 ├── scripts/sanity_check.py  # dense vs sparse retrieval leg check
 ├── evaluation/              # Langfuse experiment over a 30-item golden set
 │   └── (see evaluation/README.md)
-├── tests/
+├── tests/                   # mirrors src/: api · rag · guardrails · escalation · evaluation
 └── pyproject.toml · uv.lock · requirements.txt · Procfile · .env.example
 ```
 

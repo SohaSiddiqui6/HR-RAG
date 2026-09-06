@@ -40,6 +40,12 @@ class Message(SQLModel, table=True):
     role: str  # "user" | "assistant"
     content: str
     sources: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
+    # "answered" | "needs_human" | "out_of_scope" (see rag.chain.Outcome)
+    outcome: str = "answered"
+    # {channel, reference, url} once a human handoff has been raised for this message
+    escalation: Optional[dict] = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
     created_at: datetime = Field(default_factory=utcnow)
 
     conversation: Optional[Conversation] = Relationship(back_populates="messages")

@@ -14,12 +14,15 @@ from sqlmodel import Session
 from src import config, guardrails
 from src.db import store
 from src.db.session import get_engine, get_session, init_db
+from src.escalation import EscalationRequest, get_escalation
 from src.rag.chain import Answer, stream_answer
 from src.rag.vectorstore import get_workspace_stats
 from src.schemas import (
     ConversationRead,
     ConversationSummary,
+    CreateEscalationRequest,
     ErrorResponse,
+    EscalationOut,
     HealthResponse,
     SendMessageRequest,
     WorkspaceStats,
@@ -85,6 +88,7 @@ def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
                 "assistant",
                 guarded.answer,
                 sources=answer.sources,
+                outcome=answer.outcome.value,
             )
             store.set_title_if_default(session, conversation_id, question)
             store.touch(session, conversation_id)
@@ -147,6 +151,39 @@ def stream_message(
         _answer_stream(conversation_id, payload.question),
         media_type="text/event-stream",
     )
+
+
+@app.post(
+    "/api/conversations/{conversation_id}/escalation",
+    response_model=EscalationOut,
+    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def escalate(
+    conversation_id: str,
+    payload: CreateEscalationRequest,
+    session: Session = Depends(get_session),
+):
+    """Hand an unanswered question to a human (Slack). Idempotent per message."""
+    message = store.get_message(session, payload.message_id)
+    if message is None or message.conversation_id != conversation_id:
+        return _not_found()
+    if message.outcome != "needs_human":
+        return JSONResponse(
+            status_code=409, content={"error": "This message can't be escalated."}
+        )
+    if message.escalation is not None:
+        return message.escalation
+
+    result = get_escalation().submit(
+        EscalationRequest(
+            subject=payload.subject or "HR question",
+            body=payload.body,
+            conversation_id=conversation_id,
+        )
+    )
+    data = {"channel": result.channel, "reference": result.reference, "url": result.url}
+    store.set_escalation(session, payload.message_id, data)
+    return data
 
 
 @app.delete("/api/conversations/{conversation_id}", status_code=204)

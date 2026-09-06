@@ -28,12 +28,13 @@ dependencies = [
     # conversation store (Postgres / Supabase in prod, SQLite in tests)
     "sqlmodel>=0.0.24,<1",
     "psycopg[binary]>=3.2,<4",
+    # escalation (Slack webhook) + FastAPI TestClient
+    "httpx>=0.27,<1",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.0,<9",
-    "httpx>=0.27,<1",  # FastAPI TestClient
 ]
 
 [tool.uv]

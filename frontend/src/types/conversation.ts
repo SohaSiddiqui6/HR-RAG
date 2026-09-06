@@ -1,10 +1,20 @@
 export type MessageRole = "user" | "assistant";
 
+/** What the pipeline decided to do with the question behind an assistant message. */
+export type MessageOutcome = "answered" | "needs_human" | "out_of_scope";
+
 /** A policy document cited by an assistant answer. */
 export interface Source {
   document: string;
   page?: number;
   heading?: string;
+}
+
+/** A human handoff raised for a `needs_human` message. */
+export interface Escalation {
+  channel: string;
+  reference?: string;
+  url?: string;
 }
 
 export interface Message {
@@ -14,6 +24,8 @@ export interface Message {
   content: string;
   createdAt: string;
   sources?: Source[];
+  outcome?: MessageOutcome;
+  escalation?: Escalation;
   /** Client-side only — the request failed; `content` holds the error text. */
   failed?: boolean;
 }

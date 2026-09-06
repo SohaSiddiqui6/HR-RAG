@@ -7,12 +7,22 @@ const source = {
   headings: "2.2 PTO Carryover",
 };
 
-function message(role: "user" | "assistant", content: string) {
+function message(
+  role: "user" | "assistant",
+  content: string,
+  outcome: "answered" | "needs_human" | "out_of_scope" = "answered",
+) {
   return {
     id: crypto.randomUUID(),
     role,
     content,
-    sources: role === "assistant" ? [source] : [],
+    sources: role === "assistant" && outcome === "answered" ? [source] : [],
+    outcome,
+    escalation: null as {
+      channel: string;
+      reference: string | null;
+      url: string | null;
+    } | null,
     created_at: new Date().toISOString(),
   };
 }
@@ -76,8 +86,15 @@ export const handlers = [
       return HttpResponse.json({ error: "Conversation not found" }, { status: 404 });
 
     const { question } = (await request.json()) as { question: string };
-    const answer = `You asked: ${question}`;
-    c.messages.push(message("user", question), message("assistant", answer));
+    // "standing desk" is the test's stand-in for an HR question the docs don't cover.
+    const needsHuman = /standing desk/i.test(question);
+    const answer = needsHuman
+      ? "I couldn't find this in the current HR policies."
+      : `You asked: ${question}`;
+    c.messages.push(
+      message("user", question),
+      message("assistant", answer, needsHuman ? "needs_human" : "answered"),
+    );
     if (c.title === "New conversation") c.title = question.slice(0, 60);
     c.updated_at = new Date().toISOString();
 
@@ -95,6 +112,19 @@ export const handlers = [
     return new HttpResponse(body, {
       headers: { "Content-Type": "text/event-stream" },
     });
+  }),
+
+  http.post("*/api/conversations/:id/escalation", async ({ params, request }) => {
+    const c = store.get(params.id as string);
+    const { message_id } = (await request.json()) as { message_id: string };
+    const target = c?.messages.find((m) => m.id === message_id);
+    if (!c || !target)
+      return HttpResponse.json({ error: "Conversation not found" }, { status: 404 });
+    if (target.outcome !== "needs_human")
+      return HttpResponse.json({ error: "can't be escalated" }, { status: 409 });
+
+    target.escalation ??= { channel: "log", reference: null, url: null };
+    return HttpResponse.json(target.escalation);
   }),
 
   http.delete("*/api/conversations/:id", ({ params }) => {

@@ -1,4 +1,4 @@
-import { Sparkles } from "lucide-react";
+import { Sparkles, TriangleAlert } from "lucide-react";
 import { useParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/common/empty-state";
@@ -15,7 +15,7 @@ function bubble(id: string, role: Message["role"], content: string): Message {
 /** Centre pane: header · conversation (or welcome) · composer. */
 export function ChatView() {
   const { conversationId } = useParams();
-  const { messages, pendingText, streamingText, send, isPending, isLoading } =
+  const { messages, pendingText, streamingText, send, isPending, isLoading, loadFailed } =
     useConversation(conversationId);
 
   const displayed = [...messages];
@@ -24,7 +24,7 @@ export function ChatView() {
     displayed.push(bubble("streaming", "assistant", streamingText));
   }
 
-  const showWelcome = !isLoading && displayed.length === 0 && !isPending;
+  const showWelcome = !isLoading && !loadFailed && displayed.length === 0 && !isPending;
   const showTyping = isPending && streamingText === null;
 
   return (
@@ -37,6 +37,14 @@ export function ChatView() {
         <div className="mx-auto w-full max-w-3xl space-y-6 px-6 py-8">
           <Skeleton className="ml-auto h-10 w-48" />
           <Skeleton className="h-24 w-full" />
+        </div>
+      ) : loadFailed ? (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <EmptyState
+            icon={TriangleAlert}
+            title="Couldn't load this conversation"
+            description="Try refreshing the page."
+          />
         </div>
       ) : showWelcome ? (
         <div className="flex flex-1 items-center justify-center p-6">

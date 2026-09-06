@@ -34,7 +34,7 @@ src/
 ├── app/          providers, query client, router, error boundary, 3-pane layout
 ├── components/    ui/ (shadcn primitives) · common/ (Brand, Markdown, EmptyState)
 ├── features/
-│   ├── conversations/   api · hooks · components/{chat, sidebar}
+│   ├── conversations/   api · hooks · components/{chat, sidebar, escalation}
 │   └── workspace/       api · hooks · components
 ├── lib/           api-client · sse · cn · config · format
 ├── hooks/         useLocalStorage · useMediaQuery
