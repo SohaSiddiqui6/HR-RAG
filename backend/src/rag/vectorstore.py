@@ -67,3 +67,22 @@ def get_collection():
         name=config.COLLECTION_NAME,
         schema=_schema(),
     )
+
+
+def get_workspace_stats() -> dict:
+    """Coverage summary for the indexed corpus: which PDFs, and how many chunks.
+
+    Chroma has no distinct-value query, so the source filenames come from pulling
+    every chunk's metadata in one call — fine at this corpus size (a handful of
+    policy PDFs). Revisit if the collection grows into the tens of thousands.
+    """
+    collection = get_collection()
+    rows = collection.get(include=["metadatas"])
+    documents = sorted(
+        {(meta or {}).get("source", "") for meta in rows["metadatas"] or []} - {""}
+    )
+    return {
+        "documents": documents,
+        "document_count": len(documents),
+        "chunk_count": collection.count(),
+    }

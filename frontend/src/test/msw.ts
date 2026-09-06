@@ -39,6 +39,14 @@ export function resetStore() {
 }
 
 export const handlers = [
+  http.get("*/api/workspace", () =>
+    HttpResponse.json({
+      documents: ["pto-and-leave-policy.pdf", "code-of-conduct.pdf"],
+      document_count: 2,
+      chunk_count: 137,
+    }),
+  ),
+
   http.get("*/api/conversations", () =>
     HttpResponse.json(
       [...store.values()].map((c) => ({

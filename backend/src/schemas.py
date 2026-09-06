@@ -54,3 +54,9 @@ class SendMessageRequest(BaseModel):
 class SendMessageResponse(BaseModel):
     user_message: MessageOut
     assistant_message: MessageOut
+
+
+class WorkspaceStats(BaseModel):
+    documents: list[str] = []
+    document_count: int
+    chunk_count: int

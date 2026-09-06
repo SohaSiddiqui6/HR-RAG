@@ -98,6 +98,14 @@
     height: 100%;
   }
 
+  /* Thin, unobtrusive scrollbars everywhere (default macOS overlay bars look
+     chunky in small panes). Modern standard properties — Safari 18+, Chrome,
+     Firefox. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);

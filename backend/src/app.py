@@ -14,6 +14,7 @@ from src.db import store
 from src.db.models import Message
 from src.db.session import get_session, init_db
 from src.rag.chain import answer_question
+from src.rag.vectorstore import get_workspace_stats
 from src.schemas import (
     ConversationRead,
     ConversationSummary,
@@ -22,6 +23,7 @@ from src.schemas import (
     HealthResponse,
     SendMessageRequest,
     SendMessageResponse,
+    WorkspaceStats,
 )
 from src.tracing import trace_config
 
@@ -72,6 +74,12 @@ def _not_found() -> JSONResponse:
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/api/workspace", response_model=WorkspaceStats)
+def workspace() -> dict:
+    """Coverage summary for the right-hand pane: indexed documents and chunk count."""
+    return get_workspace_stats()
 
 
 @app.get("/api/conversations", response_model=list[ConversationSummary])
