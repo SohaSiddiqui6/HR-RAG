@@ -59,6 +59,7 @@ _ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "message": {
         "outcome": "VARCHAR NOT NULL DEFAULT 'answered'",
         "escalation": "JSON",  # JSONB on Postgres (see below)
+        "trace_id": "VARCHAR",
     },
 }
 

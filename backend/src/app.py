@@ -11,11 +11,12 @@ from fastapi import Depends, FastAPI, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import Session
 
-from src import config, guardrails
+from src import config, guardrails, tracing
 from src.db import store
 from src.db.session import get_engine, get_session, init_db
 from src.escalation import EscalationRequest, get_escalation
-from src.rag.chain import Answer, stream_answer
+from src.guardrails.output import grounding_ratio
+from src.rag.chain import Answer, Outcome, stream_answer
 from src.rag.vectorstore import get_workspace_stats
 from src.schemas import (
     ConversationRead,
@@ -23,11 +24,11 @@ from src.schemas import (
     CreateEscalationRequest,
     ErrorResponse,
     EscalationOut,
+    FeedbackRequest,
     HealthResponse,
     SendMessageRequest,
     WorkspaceStats,
 )
-from src.tracing import trace_config
 
 
 @asynccontextmanager
@@ -47,6 +48,19 @@ def _sse(event_type: str, **data) -> str:
     return f"data: {json.dumps({'type': event_type, **data})}\n\n"
 
 
+def _score(trace_id: str | None, answer: Answer, guarded) -> None:
+    """Deterministic online-monitoring scores — no LLM call (Tier 1)."""
+    tracing.score(trace_id, "outcome", answer.outcome.value, "CATEGORICAL")
+    if answer.outcome is Outcome.ANSWERED:
+        tracing.score(
+            trace_id,
+            "grounded",
+            grounding_ratio(guarded.answer, answer.contexts),
+            "NUMERIC",
+        )
+        tracing.score(trace_id, "cited", float(bool(guarded.citations)), "BOOLEAN")
+
+
 def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
     """SSE event stream: `token`* then `done`, or an `error` event on failure.
 
@@ -56,6 +70,7 @@ def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
     assistant message once generation completes.
     """
     where = guardrails.where_filter(guardrails.retrieval_context())
+    trace_id = tracing.new_trace_id()
 
     with Session(get_engine()) as session:
         history = [
@@ -68,7 +83,10 @@ def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
         try:
             answer: Answer | None = None
             for item in stream_answer(
-                question, history=history, where=where, run_config=trace_config()
+                question,
+                history=history,
+                where=where,
+                run_config=tracing.trace_config(trace_id),
             ):
                 if isinstance(item, Answer):
                     answer = item
@@ -82,6 +100,7 @@ def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
                 contexts=answer.contexts,
                 abstained=not answer.sources,
             )
+            _score(trace_id, answer, guarded)
             store.add_message(
                 session,
                 conversation_id,
@@ -89,6 +108,7 @@ def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
                 guarded.answer,
                 sources=answer.sources,
                 outcome=answer.outcome.value,
+                trace_id=trace_id,
             )
             store.set_title_if_default(session, conversation_id, question)
             store.touch(session, conversation_id)
@@ -184,6 +204,15 @@ def escalate(
     data = {"channel": result.channel, "reference": result.reference, "url": result.url}
     store.set_escalation(session, payload.message_id, data)
     return data
+
+
+@app.post("/api/feedback", status_code=204)
+def submit_feedback(payload: FeedbackRequest):
+    """Thumbs up/down on an answer -> a Langfuse score on its trace (Tier 2)."""
+    tracing.score(
+        payload.trace_id, "user_feedback", float(payload.helpful), "BOOLEAN"
+    )
+    return Response(status_code=204)
 
 
 @app.delete("/api/conversations/{conversation_id}", status_code=204)

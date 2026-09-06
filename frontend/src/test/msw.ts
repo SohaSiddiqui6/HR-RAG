@@ -23,6 +23,7 @@ function message(
       reference: string | null;
       url: string | null;
     } | null,
+    trace_id: role === "assistant" ? crypto.randomUUID() : null,
     created_at: new Date().toISOString(),
   };
 }
@@ -126,6 +127,8 @@ export const handlers = [
     target.escalation ??= { channel: "log", reference: null, url: null };
     return HttpResponse.json(target.escalation);
   }),
+
+  http.post("*/api/feedback", () => new HttpResponse(null, { status: 204 })),
 
   http.delete("*/api/conversations/:id", ({ params }) => {
     store.delete(params.id as string);

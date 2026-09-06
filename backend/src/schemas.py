@@ -34,6 +34,7 @@ class MessageOut(BaseModel):
     sources: list[SourceOut] = []
     outcome: str = "answered"
     escalation: EscalationOut | None = None
+    trace_id: str | None = None
     created_at: datetime
 
 
@@ -59,6 +60,11 @@ class CreateEscalationRequest(BaseModel):
     message_id: str
     subject: str
     body: str = ""
+
+
+class FeedbackRequest(BaseModel):
+    trace_id: str
+    helpful: bool
 
 
 class WorkspaceStats(BaseModel):

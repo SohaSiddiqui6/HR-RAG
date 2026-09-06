@@ -26,6 +26,8 @@ export interface Message {
   sources?: Source[];
   outcome?: MessageOutcome;
   escalation?: Escalation;
+  /** Langfuse trace id — lets the user's thumbs rating attach to this answer. */
+  traceId?: string;
   /** Client-side only — the request failed; `content` holds the error text. */
   failed?: boolean;
 }

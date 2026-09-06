@@ -29,6 +29,7 @@ interface MessageDto {
   sources: SourceDto[];
   outcome: MessageOutcome;
   escalation: EscalationDto | null;
+  trace_id: string | null;
   created_at: string;
 }
 
@@ -73,6 +74,7 @@ export function toMessage(dto: MessageDto): Message {
     sources: dto.sources.map(toSource),
     outcome: dto.outcome,
     escalation: dto.escalation ? toEscalation(dto.escalation) : undefined,
+    traceId: dto.trace_id ?? undefined,
   };
 }
 

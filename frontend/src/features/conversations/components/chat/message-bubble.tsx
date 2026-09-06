@@ -1,6 +1,7 @@
 import { Sparkles, TriangleAlert } from "lucide-react";
 
 import { Markdown } from "@/components/common/markdown";
+import { MessageFeedback } from "@/features/conversations/components/chat/message-feedback";
 import { MessageSources } from "@/features/conversations/components/chat/message-sources";
 import { EscalationCard } from "@/features/conversations/components/escalation/escalation-card";
 import type { Message } from "@/types/conversation";
@@ -49,6 +50,7 @@ export function MessageBubble({ message }: { message: Message }) {
           <Markdown>{message.content}</Markdown>
           {message.sources && <MessageSources sources={message.sources} />}
         </div>
+        {message.traceId && <MessageFeedback traceId={message.traceId} />}
         {message.outcome === "needs_human" && <EscalationCard message={message} />}
       </div>
     </div>

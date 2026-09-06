@@ -31,6 +31,7 @@ def add_message(
     content: str,
     sources: list[dict] | None = None,
     outcome: str = "answered",
+    trace_id: str | None = None,
 ) -> Message:
     message = Message(
         conversation_id=conversation_id,
@@ -38,6 +39,7 @@ def add_message(
         content=content,
         sources=sources or [],
         outcome=outcome,
+        trace_id=trace_id,
     )
     session.add(message)
     session.commit()

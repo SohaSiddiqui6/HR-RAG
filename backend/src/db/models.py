@@ -46,6 +46,8 @@ class Message(SQLModel, table=True):
     escalation: Optional[dict] = Field(
         default=None, sa_column=Column(JSON, nullable=True)
     )
+    # Langfuse trace id — links this answer to its spans and scores
+    trace_id: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)
 
     conversation: Optional[Conversation] = Relationship(back_populates="messages")
