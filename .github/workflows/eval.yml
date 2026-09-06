@@ -1,0 +1,68 @@
+name: eval
+
+# Runs the RAG evaluation (backend/evaluation) against the live services —
+# Chroma Cloud, OpenAI, Cohere, Langfuse. It does NOT touch the AWS deployment;
+# it imports the pipeline and runs it on the GitHub runner.
+#
+# Every push is the full 30-item dataset (~8-20 min, ~150-210 OpenAI calls,
+# one Langfuse run per push). To cut cost/noise, either:
+#   - narrow the trigger to `push: branches: [main]` + `pull_request`, or
+#   - make the run step a smoke run:  ... run_evaluation --limit 8
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# A burst of commits on one branch: keep only the newest run.
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+      CHROMA_API_KEY: ${{ secrets.CHROMA_API_KEY }}
+      CHROMA_TENANT: ${{ secrets.CHROMA_TENANT }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+      LANGFUSE_HOST: https://cloud.langfuse.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Install deps (serving only — no ingestion, no dev)
+        run: uv sync --frozen --no-dev
+
+      - name: Run evaluation
+        run: uv run python -m evaluation.run_evaluation
+
+      - name: Upload results.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_number }}
+          path: backend/evaluation/results.json
+
+      # Optional regression gate — uncomment to fail the job when the pass rate
+      # drops. Judge metrics have some variance, so keep the bar lenient.
+      # - name: Gate on task_success
+      #   run: |
+      #     uv run python -c "
+      #     import json, sys
+      #     agg = json.load(open('evaluation/results.json'))['aggregate']
+      #     ts = agg.get('task_success') or 0
+      #     print(f'task_success = {ts}')
+      #     sys.exit(0 if ts >= 0.7 else 1)
+      #     "

@@ -38,6 +38,11 @@ left out and `POST /api/ingest` returns 501. Ingestion runs as a separate job:
 `cd backend && uv sync --group ingestion && uv run python -m src.rag.ingest`.
 See [docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md).
 
+## Deploy
+
+One EC2 instance, `docker run`, no VPC/ALB/proxy — step by step in
+**[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
 ## Docs
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the full picture: system
@@ -45,3 +50,4 @@ See [docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md).
   decision, ingestion, evaluation & observability, and the design tradeoffs.
 - [backend/README.md](backend/README.md) · [frontend/README.md](frontend/README.md) — setup and layout.
 - [backend/evaluation/README.md](backend/evaluation/README.md) — the RAG evaluation.
+- [docs/DEPLOY.md](docs/DEPLOY.md) — deploy to a single AWS EC2 box.
