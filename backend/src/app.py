@@ -1,9 +1,10 @@
-"""FastAPI entrypoint: the JSON API for the HR assistant frontend."""
+"""FastAPI entrypoint: the JSON API for the HR assistant frontend.
+
+Every route lives here; the streaming answer pipeline is in `src.streaming`.
+"""
 
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -11,12 +12,10 @@ from fastapi import Depends, FastAPI, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import Session
 
-from src import config, guardrails, tracing
+from src import guardrails, streaming, tracing
 from src.db import store
-from src.db.session import get_engine, get_session, init_db
+from src.db.session import get_session, init_db
 from src.escalation import EscalationRequest, get_escalation
-from src.guardrails.output import grounding_ratio
-from src.rag.chain import Answer, Outcome, stream_answer
 from src.rag.vectorstore import get_workspace_stats
 from src.schemas import (
     ConversationRead,
@@ -42,79 +41,6 @@ app = FastAPI(title="HR-RAG", lifespan=lifespan)
 
 def _not_found() -> JSONResponse:
     return JSONResponse(status_code=404, content={"error": "Conversation not found"})
-
-
-def _sse(event_type: str, **data) -> str:
-    return f"data: {json.dumps({'type': event_type, **data})}\n\n"
-
-
-def _score(trace_id: str | None, answer: Answer, guarded) -> None:
-    """Deterministic online-monitoring scores — no LLM call (Tier 1)."""
-    tracing.score(trace_id, "outcome", answer.outcome.value, "CATEGORICAL")
-    if answer.outcome is Outcome.ANSWERED:
-        tracing.score(
-            trace_id,
-            "grounded",
-            grounding_ratio(guarded.answer, answer.contexts),
-            "NUMERIC",
-        )
-        tracing.score(trace_id, "cited", float(bool(guarded.citations)), "BOOLEAN")
-
-
-def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
-    """SSE event stream: `token`* then `done`, or an `error` event on failure.
-
-    Runs after the response has started, so it opens its own DB session (the
-    request-scoped one from `Depends` is already closed). Reads recent history
-    for follow-up context, persists the user message up front, and persists the
-    assistant message once generation completes.
-    """
-    where = guardrails.where_filter(guardrails.retrieval_context())
-    trace_id = tracing.new_trace_id()
-
-    with Session(get_engine()) as session:
-        history = [
-            (m.role, m.content)
-            for m in store.recent_messages(
-                session, conversation_id, config.HISTORY_TURNS
-            )
-        ]
-        store.add_message(session, conversation_id, "user", question)
-        try:
-            answer: Answer | None = None
-            for item in stream_answer(
-                question,
-                history=history,
-                where=where,
-                run_config=tracing.trace_config(trace_id),
-            ):
-                if isinstance(item, Answer):
-                    answer = item
-                else:
-                    yield _sse("token", text=item)
-            assert answer is not None  # stream_answer always ends with an Answer
-
-            guarded = guardrails.check_output(
-                answer.text,
-                sources=answer.sources,
-                contexts=answer.contexts,
-                abstained=not answer.sources,
-            )
-            _score(trace_id, answer, guarded)
-            store.add_message(
-                session,
-                conversation_id,
-                "assistant",
-                guarded.answer,
-                sources=answer.sources,
-                outcome=answer.outcome.value,
-                trace_id=trace_id,
-            )
-            store.set_title_if_default(session, conversation_id, question)
-            store.touch(session, conversation_id)
-            yield _sse("done")
-        except Exception as exc:  # noqa: BLE001 - reported to the client as an SSE error
-            yield _sse("error", error=str(exc))
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -168,7 +94,7 @@ def stream_message(
         return JSONResponse(status_code=400, content={"error": reason})
 
     return StreamingResponse(
-        _answer_stream(conversation_id, payload.question),
+        streaming.answer_stream(conversation_id, payload.question),
         media_type="text/event-stream",
     )
 
@@ -209,9 +135,7 @@ def escalate(
 @app.post("/api/feedback", status_code=204)
 def submit_feedback(payload: FeedbackRequest):
     """Thumbs up/down on an answer -> a Langfuse score on its trace (Tier 2)."""
-    tracing.score(
-        payload.trace_id, "user_feedback", float(payload.helpful), "BOOLEAN"
-    )
+    tracing.score(payload.trace_id, "user_feedback", float(payload.helpful), "BOOLEAN")
     return Response(status_code=204)
 
 

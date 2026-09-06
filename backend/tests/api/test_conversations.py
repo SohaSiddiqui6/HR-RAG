@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from src import app as app_module
+from src import streaming
 from src.rag.chain import Answer
 
 SOURCES = [{"source": "pto-and-leave-policy.pdf", "page_no": 1, "headings": "2.2"}]
@@ -22,7 +22,7 @@ def _fake_stream(question, history=None, run_config=None, where=None):
 
 @pytest.fixture(autouse=True)
 def _stub_rag(monkeypatch):
-    monkeypatch.setattr(app_module, "stream_answer", _fake_stream)
+    monkeypatch.setattr(streaming, "stream_answer", _fake_stream)
 
 
 def _events(response) -> list[dict]:
@@ -75,7 +75,7 @@ def test_needs_human_outcome_is_persisted_and_returned(client, monkeypatch):
         yield text
         yield Answer(text=text, outcome=Outcome.NEEDS_HUMAN)
 
-    monkeypatch.setattr(app_module, "stream_answer", _fake)
+    monkeypatch.setattr(streaming, "stream_answer", _fake)
 
     cid = _new_conversation(client)
     _ask(client, cid, "do we reimburse standing desks?")
@@ -110,7 +110,7 @@ def test_follow_up_passes_recent_history_to_the_chain(client, monkeypatch):
         yield "ok"
         yield Answer(text="ok", sources=[])
 
-    monkeypatch.setattr(app_module, "stream_answer", _capture)
+    monkeypatch.setattr(streaming, "stream_answer", _capture)
 
     cid = _new_conversation(client)
     _ask(client, cid, "what is the PTO carryover limit?")

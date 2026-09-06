@@ -3,6 +3,7 @@
 import pytest
 
 from src import app as app_module
+from src import streaming
 from src.escalation.null import NullEscalation
 from src.rag.chain import Answer, Outcome
 
@@ -22,7 +23,7 @@ def _answered_stream(question, history=None, run_config=None, where=None):
 
 def _conversation_with(client, monkeypatch, stream) -> tuple[str, str]:
     """Create a conversation, ask a question; return (conversation_id, assistant_message_id)."""
-    monkeypatch.setattr(app_module, "stream_answer", stream)
+    monkeypatch.setattr(streaming, "stream_answer", stream)
     cid = client.post("/api/conversations").json()["id"]
     client.post(
         f"/api/conversations/{cid}/messages/stream", json={"question": "standing desk?"}

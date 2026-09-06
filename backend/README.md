@@ -40,9 +40,10 @@ deterministic (the score threshold above) — the model isn't in that loop.
 backend/
 ├── src/
 │   ├── config.py            # settings from .env
-│   ├── app.py               # FastAPI app + routes
+│   ├── app.py               # FastAPI app + every route
+│   ├── streaming.py         # the SSE answer pipeline (persist -> stream -> guard -> score)
 │   ├── schemas.py           # request / response models (the API contract)
-│   ├── tracing.py           # Langfuse callback (no-op without keys)
+│   ├── tracing.py           # Langfuse callback + online scores (no-op without keys)
 │   ├── guardrails/
 │   │   ├── input.py         # empty / length / off-topic / prompt-injection / small-talk
 │   │   ├── output.py        # empty / length / citation / grounding / secret redaction
@@ -52,7 +53,9 @@ backend/
 │   │   ├── null.py         # default — logs only
 │   │   └── slack.py        # incoming-webhook notification
 │   ├── rag/
-│   │   ├── chain.py         # condense + hybrid retrieve + Cohere rerank + generate
+│   │   ├── chain.py         # condense -> classify -> generate / abstain / escalate
+│   │   ├── retriever.py     # hybrid search (dense + BM25 + RRF) + Cohere rerank
+│   │   ├── prompts.py       # LLM prompt templates
 │   │   ├── vectorstore.py   # Chroma Cloud client + dense/sparse schema
 │   │   └── ingest.py        # Docling -> chunk -> upsert  (python -m src.rag.ingest)
 │   └── db/

@@ -1,7 +1,7 @@
 """Authorization boundary: context -> retrieval metadata filter.
 
 There is no auth system yet, so these test the interface and the filter it
-produces. Chroma enforces the filter at query time (see chain.retrieve).
+produces. Chroma enforces the filter at query time (see rag.retriever.retrieve).
 """
 
 from src.guardrails.authorization import (

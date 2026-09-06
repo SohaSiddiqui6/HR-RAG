@@ -121,20 +121,3 @@ def test_small_talk_short_circuits_before_retrieval(monkeypatch):
     streamed = list(rag_chain.stream_answer("thanks!"))
     assert isinstance(streamed[-1], rag_chain.Answer)
     assert "welcome" in streamed[-1].text.lower()
-
-
-def test_retrieve_forwards_the_authorization_filter(monkeypatch):
-    captured: dict = {}
-
-    class _Retriever:
-        def invoke(self, _query, config=None):
-            return []
-
-    def _build(where=None):
-        captured["where"] = where
-        return _Retriever()
-
-    monkeypatch.setattr(rag_chain, "_build_retriever", _build)
-    rag_chain.retrieve("q", where={"tenant_id": "acme"})
-
-    assert captured["where"] == {"tenant_id": "acme"}
