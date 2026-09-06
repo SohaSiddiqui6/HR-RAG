@@ -1,0 +1,52 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t hr-rag:latest .
+
+      - name: Write SSH key
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          chmod 600 key.pem
+
+      - name: Write env file
+        run: echo "${{ secrets.APP_ENV }}" > app.env
+
+      - name: Ship image
+        run: |
+          docker save hr-rag:latest | gzip | ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.EC2_HOST }} "docker load"
+
+      - name: Ship env file and restart container
+        run: |
+          scp -o StrictHostKeyChecking=no -i key.pem app.env ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/app.env
+          ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.EC2_HOST }} '
+            chmod 600 ~/app.env
+            docker rm -f hr-rag || true
+            docker run -d --name hr-rag --restart unless-stopped -p 80:8000 --env-file ~/app.env hr-rag:latest
+            docker image prune -f
+          '
+
+      - name: Health check
+        run: |
+          echo "Waiting for the app to come up..."
+          for i in $(seq 1 15); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.EC2_HOST }}/api/health || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: got status $STATUS, retrying in 5s..."
+            sleep 5
+          done
+          echo "Health check failed after 15 attempts"
+          ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.EC2_HOST }} "docker logs --tail 50 hr-rag"
+          exit 1
