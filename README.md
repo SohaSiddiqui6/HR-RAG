@@ -16,7 +16,8 @@ with **FastAPI** / **uvicorn**.
 ```
 HR-RAG/
 ├── src/
-│   ├── app.py          # FastAPI: GET / , GET /health , POST /api/ask
+│   ├── app.py          # FastAPI: GET /api/health , POST /api/ask
+│   ├── schemas.py      # request / response Pydantic models (the API contract)
 │   ├── config.py       # settings + API keys from .env
 │   ├── vectorstore.py  # Chroma Cloud client + dense/sparse collection schema
 │   ├── ingest.py       # Docling -> chunk -> upsert  (python -m src.ingest)

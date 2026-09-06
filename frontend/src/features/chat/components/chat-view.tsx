@@ -1,30 +1,14 @@
 import { Sparkles } from "lucide-react";
-import { useState } from "react";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { ChatComposer } from "@/features/chat/components/chat-composer";
 import { MessageList } from "@/features/chat/components/message-list";
-import { CANNED_REPLY } from "@/features/chat/mock";
-import type { Message } from "@/features/chat/types";
+import { useConversation } from "@/features/chat/hooks/use-conversation";
 
-function createMessage(role: Message["role"], content: string): Message {
-  return { id: crypto.randomUUID(), role, content, createdAt: new Date().toISOString() };
-}
-
-/**
- * Centre pane. Step 2 drives the conversation from local state with a canned
- * reply; Step 3 replaces the reply with the `POST /api/ask` mutation.
- */
+/** Centre pane: header · conversation (or welcome) · composer. */
 export function ChatView() {
-  const [messages, setMessages] = useState<Message[]>([]);
-
-  function handleSend(text: string) {
-    setMessages((prev) => [
-      ...prev,
-      createMessage("user", text),
-      createMessage("assistant", CANNED_REPLY),
-    ]);
-  }
+  const { messages, send, isPending } = useConversation();
+  const showWelcome = messages.length === 0 && !isPending;
 
   return (
     <div className="flex h-full flex-col">
@@ -32,7 +16,7 @@ export function ChatView() {
         Ask HR
       </header>
 
-      {messages.length === 0 ? (
+      {showWelcome ? (
         <div className="flex flex-1 items-center justify-center p-6">
           <EmptyState
             icon={Sparkles}
@@ -41,10 +25,10 @@ export function ChatView() {
           />
         </div>
       ) : (
-        <MessageList messages={messages} />
+        <MessageList messages={messages} pending={isPending} />
       )}
 
-      <ChatComposer onSend={handleSend} />
+      <ChatComposer onSend={send} disabled={isPending} />
     </div>
   );
 }

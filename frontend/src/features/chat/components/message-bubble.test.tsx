@@ -21,4 +21,17 @@ describe("MessageBubble", () => {
 
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
+
+  it("renders a failed assistant message as an error, not markdown", () => {
+    const message: Message = {
+      ...base,
+      role: "assistant",
+      content: "Something went wrong.",
+      failed: true,
+    };
+    render(<MessageBubble message={message} />);
+
+    expect(screen.getByText("Something went wrong.")).toBeInTheDocument();
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+  });
 });

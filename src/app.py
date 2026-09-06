@@ -7,11 +7,11 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 from starlette.requests import Request
 
 from src import config, guardrails
 from src.rag_chain import answer_question
+from src.schemas import AnswerResponse, AskRequest, ErrorResponse, HealthResponse
 from src.tracing import trace_config
 
 app = FastAPI(title="HR-RAG")
@@ -25,22 +25,22 @@ app.mount(
 templates = Jinja2Templates(directory=str(config.ROOT_DIR / "templates"))
 
 
-class Question(BaseModel):
-    question: str = ""
-
-
 @app.get("/")
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
 
 
-@app.get("/health")
+@app.get("/api/health", response_model=HealthResponse)
 def health():
     return {"status": "ok"}
 
 
-@app.post("/api/ask")
-def ask(payload: Question):
+@app.post(
+    "/api/ask",
+    response_model=AnswerResponse,
+    responses={400: {"model": ErrorResponse}},
+)
+def ask(payload: AskRequest):
     ok, reason = guardrails.check_question(payload.question)
     if not ok:
         return JSONResponse(status_code=400, content={"error": reason})

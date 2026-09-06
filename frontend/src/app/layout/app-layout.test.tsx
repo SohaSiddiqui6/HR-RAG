@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import { AppLayout } from "@/app/layout/app-layout";
 import { ChatView } from "@/features/chat/components/chat-view";
+import { renderWithProviders } from "@/test/render";
 
 function renderAt(path: string) {
   const router = createMemoryRouter(
@@ -18,7 +19,7 @@ function renderAt(path: string) {
     ],
     { initialEntries: [path] },
   );
-  return render(<RouterProvider router={router} />);
+  return renderWithProviders(<RouterProvider router={router} />);
 }
 
 describe("AppLayout", () => {
