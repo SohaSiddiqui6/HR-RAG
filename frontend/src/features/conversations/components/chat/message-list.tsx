@@ -1,5 +1,5 @@
-import { MessageBubble } from "@/features/conversations/components/message-bubble";
-import { TypingIndicator } from "@/features/conversations/components/typing-indicator";
+import { MessageBubble } from "@/features/conversations/components/chat/message-bubble";
+import { TypingIndicator } from "@/features/conversations/components/chat/typing-indicator";
 import { useAutoScroll } from "@/features/conversations/hooks/use-auto-scroll";
 import type { Message } from "@/types/conversation";
 

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { MessageBubble } from "@/features/conversations/components/message-bubble";
+import { MessageBubble } from "@/features/conversations/components/chat/message-bubble";
 import type { Message } from "@/types/conversation";
 
 const base = { id: "1", createdAt: "2026-01-01T00:00:00.000Z" };

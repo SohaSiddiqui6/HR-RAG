@@ -3,23 +3,29 @@ import { useParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/common/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChatComposer } from "@/features/conversations/components/chat-composer";
-import { MessageList } from "@/features/conversations/components/message-list";
+import { ChatComposer } from "@/features/conversations/components/chat/chat-composer";
+import { MessageList } from "@/features/conversations/components/chat/message-list";
 import { useConversation } from "@/features/conversations/hooks/use-conversation";
 import type { Message } from "@/types/conversation";
 
-function pendingBubble(text: string): Message {
-  return { id: "pending", role: "user", content: text, createdAt: "" };
+function bubble(id: string, role: Message["role"], content: string): Message {
+  return { id, role, content, createdAt: "" };
 }
 
 /** Centre pane: header · conversation (or welcome) · composer. */
 export function ChatView() {
   const { conversationId } = useParams();
-  const { messages, pendingText, send, isPending, isLoading } =
+  const { messages, pendingText, streamingText, send, isPending, isLoading } =
     useConversation(conversationId);
 
-  const displayed = pendingText ? [...messages, pendingBubble(pendingText)] : messages;
+  const displayed = [...messages];
+  if (pendingText) displayed.push(bubble("pending-user", "user", pendingText));
+  if (streamingText !== null) {
+    displayed.push(bubble("streaming", "assistant", streamingText));
+  }
+
   const showWelcome = !isLoading && displayed.length === 0 && !isPending;
+  const showTyping = isPending && streamingText === null;
 
   return (
     <div className="flex h-full flex-col">
@@ -41,7 +47,7 @@ export function ChatView() {
           />
         </div>
       ) : (
-        <MessageList messages={displayed} pending={isPending} />
+        <MessageList messages={displayed} pending={showTyping} />
       )}
 
       <ChatComposer onSend={send} disabled={isPending} />

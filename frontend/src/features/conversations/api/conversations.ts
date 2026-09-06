@@ -77,9 +77,8 @@ export async function listConversations(): Promise<ConversationSummary[]> {
   return dtos.map(toSummary);
 }
 
-export async function createConversation(question?: string): Promise<Conversation> {
-  const dto = await apiClient.post<ConversationDto>("/conversations", { question });
-  return toConversation(dto);
+export async function createConversation(): Promise<Conversation> {
+  return toConversation(await apiClient.post<ConversationDto>("/conversations"));
 }
 
 export async function getConversation(id: string): Promise<Conversation> {

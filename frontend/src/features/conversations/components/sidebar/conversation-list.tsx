@@ -1,14 +1,20 @@
+import { useState } from "react";
+
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ConversationItem } from "@/features/conversations/components/conversation-item";
+import { ConversationItem } from "@/features/conversations/components/sidebar/conversation-item";
 import { useConversations } from "@/features/conversations/hooks/use-conversations";
 
 /** Sidebar "Recent chats" list. */
 export function ConversationList() {
   const { conversations, isLoading, remove } = useConversations();
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  function handleDelete(id: string) {
-    const target = conversations.find((c) => c.id === id);
-    if (window.confirm(`Delete "${target?.title}"?`)) remove(id);
+  const pendingDelete = conversations.find((c) => c.id === pendingDeleteId);
+
+  function confirmDelete() {
+    if (pendingDeleteId) remove(pendingDeleteId);
+    setPendingDeleteId(null);
   }
 
   if (isLoading) {
@@ -35,9 +41,20 @@ export function ConversationList() {
         <ConversationItem
           key={conversation.id}
           conversation={conversation}
-          onDelete={handleDelete}
+          onDelete={setPendingDeleteId}
         />
       ))}
+
+      <ConfirmDialog
+        open={pendingDelete !== undefined}
+        title="Delete conversation?"
+        description={
+          pendingDelete && `"${pendingDelete.title}" will be permanently removed.`
+        }
+        confirmLabel="Delete"
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }

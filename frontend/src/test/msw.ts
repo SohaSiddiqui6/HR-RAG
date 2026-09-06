@@ -57,18 +57,8 @@ export const handlers = [
     ),
   ),
 
-  http.post("*/api/conversations", async ({ request }) => {
-    const { question } = (await request.json().catch(() => ({}))) as {
-      question?: string;
-    };
+  http.post("*/api/conversations", () => {
     const c = conversation(crypto.randomUUID());
-    if (question) {
-      c.title = question.slice(0, 60);
-      c.messages.push(
-        message("user", question),
-        message("assistant", `You asked: ${question}`),
-      );
-    }
     store.set(c.id, c);
     return HttpResponse.json(c);
   }),
@@ -80,15 +70,31 @@ export const handlers = [
       : HttpResponse.json({ error: "Conversation not found" }, { status: 404 });
   }),
 
-  http.post("*/api/conversations/:id/messages", async ({ params, request }) => {
+  http.post("*/api/conversations/:id/messages/stream", async ({ params, request }) => {
     const c = store.get(params.id as string);
     if (!c)
       return HttpResponse.json({ error: "Conversation not found" }, { status: 404 });
+
     const { question } = (await request.json()) as { question: string };
-    const user = message("user", question);
-    const assistant = message("assistant", `You asked: ${question}`);
-    c.messages.push(user, assistant);
-    return HttpResponse.json({ user_message: user, assistant_message: assistant });
+    const answer = `You asked: ${question}`;
+    c.messages.push(message("user", question), message("assistant", answer));
+    if (c.title === "New conversation") c.title = question.slice(0, 60);
+    c.updated_at = new Date().toISOString();
+
+    const encoder = new TextEncoder();
+    const sse = (data: unknown) => encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+    const body = new ReadableStream({
+      start(controller) {
+        for (const word of answer.split(" ")) {
+          controller.enqueue(sse({ type: "token", text: `${word} ` }));
+        }
+        controller.enqueue(sse({ type: "done" }));
+        controller.close();
+      },
+    });
+    return new HttpResponse(body, {
+      headers: { "Content-Type": "text/event-stream" },
+    });
   }),
 
   http.delete("*/api/conversations/:id", ({ params }) => {

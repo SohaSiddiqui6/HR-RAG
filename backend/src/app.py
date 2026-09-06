@@ -2,34 +2,29 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import Depends, FastAPI, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import Session
 
 from src import guardrails
 from src.db import store
-from src.db.models import Message
-from src.db.session import get_session, init_db
-from src.rag.chain import answer_question
+from src.db.session import get_engine, get_session, init_db
+from src.rag.chain import Answer, stream_answer
 from src.rag.vectorstore import get_workspace_stats
 from src.schemas import (
     ConversationRead,
     ConversationSummary,
-    CreateConversationRequest,
     ErrorResponse,
     HealthResponse,
     SendMessageRequest,
-    SendMessageResponse,
     WorkspaceStats,
 )
 from src.tracing import trace_config
-
-
-class GuardrailError(Exception):
-    """A question the guardrails rejected — surfaced as HTTP 400 `{error}`."""
 
 
 @asynccontextmanager
@@ -41,34 +36,44 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="HR-RAG", lifespan=lifespan)
 
 
-@app.exception_handler(GuardrailError)
-def _guardrail_handler(_, exc: GuardrailError) -> JSONResponse:
-    return JSONResponse(status_code=400, content={"error": str(exc)})
-
-
-def _answer(session: Session, conversation_id: str, question: str) -> tuple[Message, Message]:
-    """Guardrail-check, answer, and persist the user + assistant messages."""
-    ok, reason = guardrails.check_question(question)
-    if not ok:
-        raise GuardrailError(reason)
-
-    result = answer_question(question, run_config=trace_config())
-
-    user_message = store.add_message(session, conversation_id, "user", question)
-    assistant_message = store.add_message(
-        session,
-        conversation_id,
-        "assistant",
-        guardrails.check_answer(result.text),
-        sources=result.sources,
-    )
-    store.set_title_if_default(session, conversation_id, question)
-    store.touch(session, conversation_id)
-    return user_message, assistant_message
-
-
 def _not_found() -> JSONResponse:
     return JSONResponse(status_code=404, content={"error": "Conversation not found"})
+
+
+def _sse(event_type: str, **data) -> str:
+    return f"data: {json.dumps({'type': event_type, **data})}\n\n"
+
+
+def _answer_stream(conversation_id: str, question: str) -> Iterator[str]:
+    """SSE event stream: `token`* then `done`, or an `error` event on failure.
+
+    Runs after the response has started, so it opens its own DB session (the
+    request-scoped one from `Depends` is already closed). Persists the user
+    message up front and the assistant message once generation completes.
+    """
+    with Session(get_engine()) as session:
+        store.add_message(session, conversation_id, "user", question)
+        try:
+            answer: Answer | None = None
+            for item in stream_answer(question, run_config=trace_config()):
+                if isinstance(item, Answer):
+                    answer = item
+                else:
+                    yield _sse("token", text=item)
+            assert answer is not None  # stream_answer always ends with an Answer
+
+            store.add_message(
+                session,
+                conversation_id,
+                "assistant",
+                guardrails.check_answer(answer.text),
+                sources=answer.sources,
+            )
+            store.set_title_if_default(session, conversation_id, question)
+            store.touch(session, conversation_id)
+            yield _sse("done")
+        except Exception as exc:  # noqa: BLE001 - reported to the client as an SSE error
+            yield _sse("error", error=str(exc))
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -87,20 +92,9 @@ def list_conversations(session: Session = Depends(get_session)):
     return store.list_conversations(session)
 
 
-@app.post(
-    "/api/conversations",
-    response_model=ConversationRead,
-    responses={400: {"model": ErrorResponse}},
-)
-def create_conversation(
-    payload: CreateConversationRequest,
-    session: Session = Depends(get_session),
-):
-    conversation = store.create_conversation(session)
-    if payload.question:
-        _answer(session, conversation.id, payload.question)
-        session.refresh(conversation)
-    return conversation
+@app.post("/api/conversations", response_model=ConversationRead)
+def create_conversation(session: Session = Depends(get_session)):
+    return store.create_conversation(session)
 
 
 @app.get(
@@ -116,19 +110,26 @@ def get_conversation(conversation_id: str, session: Session = Depends(get_sessio
 
 
 @app.post(
-    "/api/conversations/{conversation_id}/messages",
-    response_model=SendMessageResponse,
+    "/api/conversations/{conversation_id}/messages/stream",
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
 )
-def send_message(
+def stream_message(
     conversation_id: str,
     payload: SendMessageRequest,
     session: Session = Depends(get_session),
 ):
+    """Ask a question; the grounded answer streams back as Server-Sent Events."""
     if store.get_conversation(session, conversation_id) is None:
         return _not_found()
-    user_message, assistant_message = _answer(session, conversation_id, payload.question)
-    return {"user_message": user_message, "assistant_message": assistant_message}
+
+    ok, reason = guardrails.check_question(payload.question)
+    if not ok:
+        return JSONResponse(status_code=400, content={"error": reason})
+
+    return StreamingResponse(
+        _answer_stream(conversation_id, payload.question),
+        media_type="text/event-stream",
+    )
 
 
 @app.delete("/api/conversations/{conversation_id}", status_code=204)

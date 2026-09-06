@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { ChatComposer } from "@/features/conversations/components/chat-composer";
+import { ChatComposer } from "@/features/conversations/components/chat/chat-composer";
 
 describe("ChatComposer", () => {
   it("sends on Enter and clears the field", async () => {

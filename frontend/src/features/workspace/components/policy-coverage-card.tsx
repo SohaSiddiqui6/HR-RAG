@@ -2,11 +2,7 @@ import { FileText, ShieldCheck } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkspaceStats } from "@/features/workspace/hooks/use-workspace-stats";
-
-/** Drop the `.pdf` extension for display; keep the rest of the name as-is. */
-function documentLabel(filename: string): string {
-  return filename.replace(/\.pdf$/i, "");
-}
+import { documentName } from "@/lib/format";
 
 /** Workspace pane: what the assistant's answers are grounded in. */
 export function PolicyCoverageCard() {
@@ -43,7 +39,7 @@ export function PolicyCoverageCard() {
                 className="text-muted-foreground flex items-center gap-2 text-sm"
               >
                 <FileText className="size-3.5 shrink-0" />
-                <span className="truncate">{documentLabel(doc)}</span>
+                <span className="truncate">{documentName(doc)}</span>
               </li>
             ))}
           </ul>

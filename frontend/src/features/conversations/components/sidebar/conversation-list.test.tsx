@@ -1,18 +1,19 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { ConversationList } from "@/features/conversations/components/conversation-list";
+import { ConversationList } from "@/features/conversations/components/sidebar/conversation-list";
 import { renderWithProviders } from "@/test/render";
 
 async function seedConversation(question: string) {
-  const response = await fetch("/api/conversations", {
+  const { id } = await (await fetch("/api/conversations", { method: "POST" })).json();
+  await fetch(`/api/conversations/${id}/messages/stream`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ question }),
   });
-  return (await response.json()) as { id: string };
+  return { id } as { id: string };
 }
 
 function renderList(path = "/") {
@@ -25,8 +26,6 @@ function renderList(path = "/") {
     </MemoryRouter>,
   );
 }
-
-afterEach(() => vi.restoreAllMocks());
 
 describe("ConversationList", () => {
   it("renders a row per conversation", async () => {
@@ -65,14 +64,14 @@ describe("ConversationList", () => {
     );
   });
 
-  it("deletes a conversation after confirmation", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("deletes a conversation after confirming in the dialog", async () => {
     await seedConversation("Expense policy");
 
     renderList();
     await userEvent.click(
       await screen.findByRole("button", { name: "Delete Expense policy" }),
     );
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() =>
       expect(
@@ -81,14 +80,14 @@ describe("ConversationList", () => {
     );
   });
 
-  it("keeps the conversation when confirmation is declined", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("keeps the conversation when the dialog is cancelled", async () => {
     await seedConversation("Dress code");
 
     renderList();
     await userEvent.click(
       await screen.findByRole("button", { name: "Delete Dress code" }),
     );
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(screen.getByRole("link", { name: "Dress code" })).toBeInTheDocument();
   });

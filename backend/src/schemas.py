@@ -43,17 +43,8 @@ class ConversationRead(BaseModel):
     messages: list[MessageOut] = []
 
 
-class CreateConversationRequest(BaseModel):
-    question: str | None = None
-
-
 class SendMessageRequest(BaseModel):
     question: str = ""
-
-
-class SendMessageResponse(BaseModel):
-    user_message: MessageOut
-    assistant_message: MessageOut
 
 
 class WorkspaceStats(BaseModel):

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import functools
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
@@ -152,6 +153,28 @@ def retrieve(question: str, run_config: RunnableConfig | None = None) -> List[Do
     raise RuntimeError("unreachable: RERANK_MAX_RETRIES must be >= 1")
 
 
+def _relevant_docs(
+    question: str, run_config: RunnableConfig | None
+) -> List[Document]:
+    """Retrieve + rerank, keeping only chunks above the relevance floor."""
+    return [
+        d
+        for d in retrieve(question, run_config)
+        if d.metadata.get("relevance_score", 0.0) >= config.RELEVANCE_THRESHOLD
+    ]
+
+
+def _sources(docs: List[Document]) -> List[dict]:
+    return [
+        {
+            "source": d.metadata.get("source"),
+            "page_no": d.metadata.get("page_no"),
+            "headings": d.metadata.get("headings"),
+        }
+        for d in docs
+    ]
+
+
 def answer_question(question: str, run_config: RunnableConfig | None = None) -> Answer:
     """Retrieve, rerank, and generate a grounded, cited answer.
 
@@ -160,29 +183,46 @@ def answer_question(question: str, run_config: RunnableConfig | None = None) -> 
     a LangChain config (e.g. ``{"callbacks": [...]}``) threaded into every model
     call so the chain can be traced.
     """
-    docs = [
-        d
-        for d in retrieve(question, run_config)
-        if d.metadata.get("relevance_score", 0.0) >= config.RELEVANCE_THRESHOLD
-    ]
+    docs = _relevant_docs(question, run_config)
     if not docs:
         return Answer(text=NO_ANSWER)
 
-    context = _format_docs(docs)
     response = get_llm().invoke(
-        PROMPT.format_messages(context=context, question=question),
+        PROMPT.format_messages(context=_format_docs(docs), question=question),
         config=run_config,
     )
-    sources = [
-        {
-            "source": d.metadata.get("source"),
-            "page_no": d.metadata.get("page_no"),
-            "headings": d.metadata.get("headings"),
-        }
-        for d in docs
-    ]
     return Answer(
         text=str(response.content),
-        sources=sources,
+        sources=_sources(docs),
+        contexts=[d.page_content for d in docs],
+    )
+
+
+def stream_answer(
+    question: str, run_config: RunnableConfig | None = None
+) -> Iterator[str | Answer]:
+    """Same retrieval + abstention rules as ``answer_question``, streamed.
+
+    Yields answer text token-by-token, then a final :class:`Answer` carrying the
+    full text plus sources and contexts. The out-of-scope path yields
+    ``NO_ANSWER`` as a single chunk.
+    """
+    docs = _relevant_docs(question, run_config)
+    if not docs:
+        yield NO_ANSWER
+        yield Answer(text=NO_ANSWER)
+        return
+
+    messages = PROMPT.format_messages(context=_format_docs(docs), question=question)
+    parts: List[str] = []
+    for chunk in get_llm().stream(messages, config=run_config):
+        text = str(chunk.content)
+        if text:
+            parts.append(text)
+            yield text
+
+    yield Answer(
+        text="".join(parts),
+        sources=_sources(docs),
         contexts=[d.page_content for d in docs],
     )

@@ -4,7 +4,7 @@ import { HttpResponse, http } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
-import { ChatView } from "@/features/conversations/components/chat-view";
+import { ChatView } from "@/features/conversations/components/chat/chat-view";
 import { server } from "@/test/msw";
 import { renderWithProviders } from "@/test/render";
 
@@ -26,8 +26,18 @@ async function ask(question: string) {
   );
 }
 
+async function seedConversation(question: string): Promise<string> {
+  const { id } = await (await fetch("/api/conversations", { method: "POST" })).json();
+  await fetch(`/api/conversations/${id}/messages/stream`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  return id;
+}
+
 describe("ChatView", () => {
-  it("creates a conversation on the first question and shows the answer", async () => {
+  it("creates a conversation on the first question and streams the answer", async () => {
     renderChat("/");
     expect(
       screen.getByRole("heading", { name: "How can I help with HR?" }),
@@ -42,23 +52,17 @@ describe("ChatView", () => {
   });
 
   it("loads an existing conversation by id", async () => {
-    const created = await (
-      await fetch("/api/conversations", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: "existing question" }),
-      })
-    ).json();
+    const id = await seedConversation("existing question");
 
-    renderChat(`/c/${created.id}`);
+    renderChat(`/c/${id}`);
 
     expect(await screen.findByText("existing question")).toBeInTheDocument();
     expect(screen.getByText("You asked: existing question")).toBeInTheDocument();
   });
 
-  it("shows an inline error when the request fails", async () => {
+  it("shows an inline error when the stream fails", async () => {
     server.use(
-      http.post("*/api/conversations", () =>
+      http.post("*/api/conversations/:id/messages/stream", () =>
         HttpResponse.json({ error: "Question is empty." }, { status: 400 }),
       ),
     );

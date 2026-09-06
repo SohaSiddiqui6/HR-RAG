@@ -7,9 +7,9 @@ import {
   getConversation,
 } from "@/features/conversations/api/conversations";
 import { conversationKeys } from "@/features/conversations/api/keys";
-import { sendMessage } from "@/features/conversations/api/messages";
-import type { Message } from "@/types/conversation";
+import { streamMessage } from "@/features/conversations/api/messages";
 import { ApiError } from "@/types/api";
+import type { Message } from "@/types/conversation";
 
 function errorMessage(error: unknown): Message {
   return {
@@ -25,14 +25,16 @@ function errorMessage(error: unknown): Message {
 }
 
 /**
- * One conversation and the action to add to it. Loads from the server; a send
- * either appends to the current conversation or (when there is none yet) creates
- * one and navigates to it.
+ * One conversation and the action to add to it. A send creates the conversation
+ * first if there is none yet, then streams the answer: `pendingText` holds the
+ * user's bubble and `streamingText` the assistant's, both cleared once the
+ * persisted pair has been refetched.
  */
 export function useConversation(conversationId?: string) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pendingText, setPendingText] = useState<string | null>(null);
+  const [streamingText, setStreamingText] = useState<string | null>(null);
   const [localError, setLocalError] = useState<Message | null>(null);
 
   const query = useQuery({
@@ -41,47 +43,49 @@ export function useConversation(conversationId?: string) {
     enabled: Boolean(conversationId),
   });
 
-  const create = useMutation({
-    mutationFn: createConversation,
-    onSuccess: (conversation) => {
+  async function runSend(text: string) {
+    let id = conversationId;
+    if (!id) {
+      const conversation = await createConversation();
       queryClient.setQueryData(conversationKeys.detail(conversation.id), conversation);
       void queryClient.invalidateQueries({ queryKey: conversationKeys.all });
       navigate(`/c/${conversation.id}`);
-    },
-  });
+      id = conversation.id;
+    }
 
-  const append = useMutation({
-    mutationFn: (question: string) => sendMessage(conversationId!, question),
-    // Await the refetch so the persisted pair is on screen before the pending
-    // overlay clears (onSettled) — avoids a flash of a duplicate user bubble.
-    // Also refresh the sidebar list: the first message names the conversation
-    // and bumps its position.
-    onSuccess: () =>
-      Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: conversationKeys.detail(conversationId!),
-        }),
-        queryClient.invalidateQueries({ queryKey: conversationKeys.all }),
-      ]),
-  });
+    await streamMessage(id, text, (token) =>
+      setStreamingText((prev) => (prev ?? "") + token),
+    );
+
+    // Refetch the persisted pair before clearing the overlays (onSettled).
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: conversationKeys.detail(id) }),
+      queryClient.invalidateQueries({ queryKey: conversationKeys.all }),
+    ]);
+  }
+
+  const mutation = useMutation({ mutationFn: runSend });
 
   function send(text: string) {
     setPendingText(text);
+    setStreamingText(null);
     setLocalError(null);
-    const mutation = conversationId ? append : create;
     mutation.mutate(text, {
       onError: (error) => setLocalError(errorMessage(error)),
-      onSettled: () => setPendingText(null),
+      onSettled: () => {
+        setPendingText(null);
+        setStreamingText(null);
+      },
     });
   }
 
   const messages = query.data?.messages ?? [];
-  const isPending = create.isPending || append.isPending;
 
   return {
     messages: localError ? [...messages, localError] : messages,
     pendingText,
-    isPending,
+    streamingText,
+    isPending: mutation.isPending,
     isLoading: query.isLoading,
     send,
   };

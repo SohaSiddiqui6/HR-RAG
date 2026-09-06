@@ -31,12 +31,14 @@ don't import each other — they compose in `src/app/layout/` and share `src/lib
 
 ```
 src/
-├── app/          providers, query client, router, 3-pane layout
+├── app/          providers, query client, router, error boundary, 3-pane layout
 ├── components/    ui/ (shadcn primitives) · common/ (Brand, Markdown, EmptyState)
-├── features/      conversations · workspace
-├── lib/           api-client · cn · config
+├── features/
+│   ├── conversations/   api · hooks · components/{chat, sidebar}
+│   └── workspace/       api · hooks · components
+├── lib/           api-client · sse · cn · config · format
 ├── hooks/         useLocalStorage · useMediaQuery
-├── types/         ApiError · conversation domain types
+├── types/         ApiError · conversation + workspace domain types
 └── styles/        globals.css (Tailwind v4 + dark theme tokens)
 ```
 

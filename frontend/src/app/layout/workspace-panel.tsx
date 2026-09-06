@@ -3,7 +3,10 @@ import { PolicyCoverageCard } from "@/features/workspace/components/policy-cover
 /** Right pane: policy coverage / groundedness / source index. */
 export function WorkspacePanel() {
   return (
-    <aside className="border-border bg-panel flex h-full flex-col gap-6 overflow-y-auto border-l p-5">
+    <aside
+      aria-label="Workspace"
+      className="border-border bg-panel flex h-full flex-col gap-6 overflow-y-auto border-l p-5"
+    >
       <div>
         <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Workspace

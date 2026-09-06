@@ -3,7 +3,7 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import { AppLayout } from "@/app/layout/app-layout";
-import { ChatView } from "@/features/conversations/components/chat-view";
+import { ChatView } from "@/features/conversations/components/chat/chat-view";
 import { renderWithProviders } from "@/test/render";
 
 function renderAt(path: string) {

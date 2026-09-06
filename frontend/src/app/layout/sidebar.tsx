@@ -3,12 +3,15 @@ import { Link } from "react-router-dom";
 
 import { Brand } from "@/components/common/brand";
 import { Button } from "@/components/ui/button";
-import { ConversationList } from "@/features/conversations/components/conversation-list";
+import { ConversationList } from "@/features/conversations/components/sidebar/conversation-list";
 
 /** Left pane: brand, new-conversation action, recent chats. */
 export function Sidebar() {
   return (
-    <aside className="border-border bg-panel flex h-full flex-col gap-4 border-r p-4">
+    <aside
+      aria-label="Conversation history"
+      className="border-border bg-panel flex h-full flex-col gap-4 border-r p-4"
+    >
       <Brand />
 
       <Button asChild className="w-full justify-start">

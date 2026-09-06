@@ -1,6 +1,7 @@
 import { Sparkles, TriangleAlert } from "lucide-react";
 
 import { Markdown } from "@/components/common/markdown";
+import { MessageSources } from "@/features/conversations/components/chat/message-sources";
 import type { Message } from "@/types/conversation";
 
 function AssistantAvatar({ error = false }: { error?: boolean }) {
@@ -44,6 +45,7 @@ export function MessageBubble({ message }: { message: Message }) {
       <AssistantAvatar />
       <div className="border-border bg-card min-w-0 flex-1 rounded-xl border p-4">
         <Markdown>{message.content}</Markdown>
+        {message.sources && <MessageSources sources={message.sources} />}
       </div>
     </div>
   );
