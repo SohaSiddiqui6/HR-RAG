@@ -1,7 +1,7 @@
 # Frontend
 
 React + TypeScript SPA for the HR-RAG assistant. Talks to the FastAPI backend
-over JSON.
+over JSON + SSE. Architecture and diagrams: [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
 
 ## Run
 

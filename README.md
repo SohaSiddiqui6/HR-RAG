@@ -1,11 +1,15 @@
 # HR-RAG
 
-An HR assistant that answers questions about company policy documents, with
-conversation history — grounded, cited answers with an out-of-scope refusal path.
+An HR assistant that answers questions about company policy PDFs with **grounded,
+cited** answers. It distinguishes three things it can do with a question —
+**answer** it from the documents, **decline** it as out of scope, or **escalate**
+it to a human — and decides which deterministically (a reranker-score threshold),
+never by trusting the model to know when it doesn't know.
 
 ```
-├── backend/    FastAPI · RAG (Docling → Chroma hybrid search → Cohere rerank → GPT-4o-mini) · Postgres
-└── frontend/   React + TypeScript SPA (Vite · Tailwind · shadcn · TanStack Query)
+├── backend/    FastAPI · hybrid retrieval (Chroma dense + BM25 + RRF) · Cohere rerank
+│               · GPT-4o-mini · Postgres · guardrails · Langfuse · Slack handoff
+└── frontend/   React + TypeScript SPA (Vite · Tailwind · TanStack Query · SSE streaming)
 ```
 
 ## Run both
@@ -19,6 +23,10 @@ uv run uvicorn src.app:app --reload
 cd frontend && npm install && npm run dev
 ```
 
-See [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md)
-for details, and [backend/evaluation/README.md](backend/evaluation/README.md) for
-the RAG evaluation.
+## Docs
+
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the full picture: system
+  context, the answer flow, retrieval, guardrails, the answer/abstain/escalate
+  decision, ingestion, evaluation & observability, and the design tradeoffs.
+- [backend/README.md](backend/README.md) · [frontend/README.md](frontend/README.md) — setup and layout.
+- [backend/evaluation/README.md](backend/evaluation/README.md) — the RAG evaluation.

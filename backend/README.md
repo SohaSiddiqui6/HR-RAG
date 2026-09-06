@@ -1,7 +1,8 @@
 # Backend
 
 FastAPI service: a retrieval-augmented Q&A API over HR / company policy documents,
-plus conversation history.
+plus conversation history. For the full picture and diagrams see
+[../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
 
 **RAG pipeline** — **Docling** parses the policy PDFs and **HybridChunker** splits
 them → chunks are upserted to a **Chroma Cloud** collection with a dense (OpenAI)
