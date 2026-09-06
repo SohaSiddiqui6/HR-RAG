@@ -51,3 +51,19 @@ class Message(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
     conversation: Optional[Conversation] = Relationship(back_populates="messages")
+
+
+class IngestedDocument(SQLModel, table=True):
+    """One row per policy PDF that has reached Chroma — the ingestion manifest.
+
+    Keyed on filename; ``sha256`` is of the file bytes, so an edited PDF (new
+    hash) is reprocessed on the next run. Replaces the old local
+    ``ingestion_manifest.json`` so the record survives an ephemeral deploy and
+    is shared across instances.
+    """
+
+    source: str = Field(primary_key=True)  # filename, e.g. "remote-work-policy.pdf"
+    sha256: str
+    chunk_count: int
+    ocr_used: bool = False
+    updated_at: datetime = Field(default_factory=utcnow)

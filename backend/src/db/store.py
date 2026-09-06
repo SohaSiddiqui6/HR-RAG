@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from sqlmodel import Session, select
 
-from src.db.models import DEFAULT_TITLE, Conversation, Message, utcnow
+from src.db.models import (
+    DEFAULT_TITLE,
+    Conversation,
+    IngestedDocument,
+    Message,
+    utcnow,
+)
 
 
 def list_conversations(session: Session) -> list[Conversation]:
@@ -101,3 +107,35 @@ def delete_conversation(session: Session, conversation_id: str) -> bool:
     session.delete(conversation)
     session.commit()
     return True
+
+
+# --- Ingestion manifest (see src.rag.ingest) ------------------------------
+
+
+def list_ingested_documents(session: Session) -> list[IngestedDocument]:
+    stmt = select(IngestedDocument).order_by(IngestedDocument.source)  # type: ignore[arg-type]
+    return list(session.exec(stmt))
+
+
+def get_ingest_manifest(session: Session) -> dict[str, str]:
+    """``{filename: sha256}`` for every PDF already in Chroma."""
+    return {d.source: d.sha256 for d in list_ingested_documents(session)}
+
+
+def upsert_ingested_document(
+    session: Session,
+    source: str,
+    sha256: str,
+    chunk_count: int,
+    ocr_used: bool = False,
+) -> None:
+    """Record (or update) one PDF's manifest row after its chunks are upserted."""
+    row = session.get(IngestedDocument, source)
+    if row is None:
+        row = IngestedDocument(source=source, sha256=sha256, chunk_count=chunk_count)
+    row.sha256 = sha256
+    row.chunk_count = chunk_count
+    row.ocr_used = ocr_used
+    row.updated_at = utcnow()
+    session.add(row)
+    session.commit()

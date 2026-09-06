@@ -28,7 +28,8 @@ flowchart TB
     API --> PG[("Postgres")]
     API --> LF["Langfuse"]
     API --> Slack["Slack"]
-    PDFs["Policy PDFs"] --> Ingest["ingest job"] --> Chroma
+    PDFs["Policy PDFs<br/>(docs/ dir or Supabase Storage)"] --> Ingest["ingest job"] --> Chroma
+    Ingest --> PG
 ```
 
 External services are all optional to *run* the app: without Langfuse keys
@@ -51,7 +52,8 @@ backend/src/
 │   ├── retriever.py   hybrid search (dense + BM25 + RRF) + Cohere rerank
 │   ├── prompts.py     LLM prompt templates
 │   ├── vectorstore.py Chroma Cloud client + dense/sparse schema
-│   └── ingest.py      Docling → HybridChunker → upsert
+│   ├── storage.py     source PDFs — local docs/ dir or Supabase Storage bucket
+│   └── ingest.py      fetch → Docling → HybridChunker → upsert
 ├── guardrails/
 │   ├── input.py       empty / length / off-topic / prompt-injection / small-talk
 │   ├── output.py      empty / length / citation validation / grounding / secret redaction
@@ -246,7 +248,8 @@ wasted in that migration.
 
 ```mermaid
 flowchart LR
-    PDF["policy PDF"] --> OCR{"has a<br/>text layer?"}
+    Src["source PDFs<br/>docs/ dir | Supabase Storage<br/>(DOCS_SOURCE)"] --> Fetch["fetch bytes"]
+    Fetch --> OCR{"has a<br/>text layer?"}
     OCR -->|no| DoOCR["Docling OCR"]
     OCR -->|yes| Parse["Docling parse<br/>(layout + tables)"]
     DoOCR --> Parse
@@ -255,11 +258,18 @@ flowchart LR
     Ctx --> Upsert["Chroma upsert<br/>(deterministic id = sha256(name:text))"]
     Upsert --> Dense["dense index<br/>(OpenAI, on write)"]
     Upsert --> Sparse["sparse index<br/>(BM25, on write)"]
-    Upsert --> Manifest["docs/ingestion_manifest.json<br/>(sha256 per file)"]
+    Upsert --> Manifest["ingested_document table<br/>(Postgres · sha256 + chunk_count per file)"]
 ```
 
-- **Idempotent**: chunk ids are content hashes, and a manifest of file hashes
-  means a re-run only processes new or changed PDFs.
+- **Source is pluggable** (`DOCS_SOURCE`): `local` reads `backend/docs/`,
+  `supabase` pulls each PDF from a private Supabase Storage bucket over the
+  Storage REST API with the service-role key (`src/rag/storage.py`).
+- **Idempotent**: chunk ids are content hashes, and the manifest of file hashes
+  means a re-run only processes new or changed PDFs. The manifest is a Postgres
+  table (`ingested_document`), so it survives an ephemeral deploy and is shared
+  across instances; each file's row is written right after its own upsert, so a
+  run that fails partway keeps the work it finished. Truncate the table to force
+  a full re-ingest.
 - **Both indexes are populated by Chroma on write** from the chunk text — the
   sparse index is a schema property fixed at collection creation, so changing it
   means a new `COLLECTION_NAME`.
@@ -267,6 +277,9 @@ flowchart LR
   (`python -m src.rag.ingest`) or `POST /api/ingest`, which runs the same pipeline
   synchronously and returns a `{processed, skipped, chunks_upserted,
   collection_count}` summary.
+- `/api/workspace`'s document list is read from `ingested_document`, not by
+  scanning chunk metadata — Chroma Cloud caps a single `get()` at a few hundred
+  rows, which silently drops documents past that.
 
 ---
 

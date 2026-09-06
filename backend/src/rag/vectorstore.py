@@ -21,8 +21,10 @@ from chromadb.utils.embedding_functions import (
     ChromaBm25EmbeddingFunction,
     OpenAIEmbeddingFunction,
 )
+from sqlmodel import Session
 
 from src import config
+from src.db import store
 
 
 def _client() -> chromadb.CloudClient:
@@ -69,20 +71,17 @@ def get_collection():
     )
 
 
-def get_workspace_stats() -> dict:
+def get_workspace_stats(session: Session) -> dict:
     """Coverage summary for the indexed corpus: which PDFs, and how many chunks.
 
-    Chroma has no distinct-value query, so the source filenames come from pulling
-    every chunk's metadata in one call — fine at this corpus size (a handful of
-    policy PDFs). Revisit if the collection grows into the tens of thousands.
+    The document list comes from the ``ingested_document`` manifest table, not
+    from scanning chunk metadata — Chroma Cloud caps a single ``get()`` at a few
+    hundred rows, which silently drops documents once the corpus is larger than
+    that. ``chunk_count`` uses ``collection.count()`` (not row-capped).
     """
-    collection = get_collection()
-    rows = collection.get(include=["metadatas"])
-    documents = sorted(
-        {(meta or {}).get("source", "") for meta in rows["metadatas"] or []} - {""}
-    )
+    documents = [d.source for d in store.list_ingested_documents(session)]
     return {
         "documents": documents,
         "document_count": len(documents),
-        "chunk_count": collection.count(),
+        "chunk_count": get_collection().count(),
     }

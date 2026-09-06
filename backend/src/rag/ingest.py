@@ -1,4 +1,4 @@
-"""Ingestion pipeline: Docling PDF parsing -> chunking -> Chroma Cloud upsert.
+"""Ingestion pipeline: PDF fetch -> Docling parsing -> chunking -> Chroma upsert.
 
 Run as a module:
 
@@ -7,33 +7,39 @@ Run as a module:
 or trigger the same pipeline over HTTP with ``POST /api/ingest`` (see
 ``src.app``). Both paths call :func:`run_ingestion`.
 
-A manifest (``docs/ingestion_manifest.json``) records the SHA-256 of every file
-that reached Chroma, so re-runs only process new or changed PDFs. The manifest is
-written *after* a successful upsert, never before.
+Source PDFs come from :mod:`src.rag.storage` (the local ``docs/`` dir or a
+Supabase Storage bucket, per ``DOCS_SOURCE``). The manifest — one SHA-256 per
+file that reached Chroma — lives in Postgres (``ingested_document`` table), so
+re-runs only process new or changed PDFs. Each file's manifest row is written
+*after* its own upsert, never before.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 import time
-from pathlib import Path
+from io import BytesIO
 
 import fitz  # PyMuPDF
 from docling.chunking import HybridChunker
+from docling.datamodel.base_models import DocumentStream
 from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
 from docling.document_converter import DocumentConverter, PdfFormatOption
+from sqlmodel import Session
 from transformers import AutoTokenizer
 
 from src import config
+from src.db import store
+from src.db.session import get_engine
+from src.rag import storage
 from src.rag.vectorstore import get_collection
 
 BATCH_SIZE = 100
 
 
-def needs_ocr(pdf_path: Path) -> bool:
+def needs_ocr(data: bytes) -> bool:
     """True when the PDF has no real text layer and must be OCR'd."""
-    doc = fitz.open(pdf_path)
+    doc = fitz.open(stream=data, filetype="pdf")
     try:
         return all(not page.get_text().strip() for page in doc)
     finally:
@@ -59,19 +65,9 @@ def build_chunker() -> HybridChunker:
     )
 
 
-def load_manifest() -> dict[str, str]:
-    if config.MANIFEST_PATH.exists():
-        return json.loads(config.MANIFEST_PATH.read_text())
-    return {}
-
-
-def save_manifest(manifest: dict[str, str]) -> None:
-    config.MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
-
-
-def file_hash(pdf_path: Path) -> str:
+def file_hash(data: bytes) -> str:
     # Hash the bytes, not the name, so an edited PDF is reprocessed.
-    return hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+    return hashlib.sha256(data).hexdigest()
 
 
 def _clean(meta: dict) -> dict:
@@ -79,10 +75,11 @@ def _clean(meta: dict) -> dict:
     return {k: v for k, v in meta.items() if v is not None}
 
 
-def chunk_pdf(pdf_path: Path, chunker: HybridChunker) -> list[dict]:
-    """Convert and chunk one PDF into upsert-ready records."""
-    ocr_needed = needs_ocr(pdf_path)
-    result = build_converter(ocr_needed).convert(str(pdf_path))
+def chunk_pdf(name: str, data: bytes, chunker: HybridChunker) -> list[dict]:
+    """Convert and chunk one PDF (raw bytes) into upsert-ready records."""
+    ocr_needed = needs_ocr(data)
+    source = DocumentStream(name=name, stream=BytesIO(data))
+    result = build_converter(ocr_needed).convert(source)
 
     records: list[dict] = []
     for chunk in chunker.chunk(dl_doc=result.document):
@@ -91,11 +88,11 @@ def chunk_pdf(pdf_path: Path, chunker: HybridChunker) -> list[dict]:
         page_no = prov[0].page_no if prov else None
         records.append(
             {
-                "id": hashlib.sha256(f"{pdf_path.name}:{text}".encode()).hexdigest(),
+                "id": hashlib.sha256(f"{name}:{text}".encode()).hexdigest(),
                 "document": text,
                 "metadata": _clean(
                     {
-                        "source": pdf_path.name,
+                        "source": name,
                         "headings": ", ".join(chunk.meta.headings)
                         if chunk.meta.headings
                         else "",
@@ -121,48 +118,58 @@ def upsert(collection, records: list[dict]) -> None:
 
 
 def run_ingestion() -> dict:
-    """Scan ``DOCS_DIR``, upsert new/changed PDFs, return a run summary.
+    """Fetch source PDFs, upsert new/changed ones, return a run summary.
 
     Shared by the CLI (``python -m src.rag.ingest``) and ``POST /api/ingest``.
-    Unchanged files (manifest hit) are skipped, so the common case is cheap.
-    Raises ``FileNotFoundError`` when the docs directory holds no PDFs.
-    """
-    pdf_paths = sorted(config.DOCS_DIR.glob("*.pdf"))
-    if not pdf_paths:
-        raise FileNotFoundError(f"No PDFs found in {config.DOCS_DIR}")
+    Files whose SHA-256 matches their manifest row are skipped. Each processed
+    file is upserted and its manifest row committed before moving on, so a run
+    that fails partway keeps the work it already finished.
 
-    manifest = load_manifest()
-    chunker = build_chunker()
+    Raises ``FileNotFoundError`` when the source holds no PDFs.
+    """
+    docs = storage.get_docs()
+    refs = docs.list_pdfs()
+    if not refs:
+        raise FileNotFoundError(f"No PDFs found (DOCS_SOURCE={config.DOCS_SOURCE})")
+
     collection = get_collection()
+    chunker: HybridChunker | None = None  # built lazily — a full-skip run needs none
 
     processed: list[str] = []
     skipped: list[str] = []
-    records: list[dict] = []
-    for pdf_path in pdf_paths:
-        digest = file_hash(pdf_path)
-        if manifest.get(pdf_path.name) == digest:
-            print(f"Skipping {pdf_path.name} (unchanged)")
-            skipped.append(pdf_path.name)
-            continue
+    chunks_upserted = 0
 
-        print(f"Processing {pdf_path.name} ...")
-        start = time.time()
-        pdf_records = chunk_pdf(pdf_path, chunker)
-        records.extend(pdf_records)
-        manifest[pdf_path.name] = digest  # staged, committed after upsert
-        processed.append(pdf_path.name)
-        print(f"  {len(pdf_records)} chunks in {time.time() - start:.1f}s")
+    with Session(get_engine()) as session:
+        manifest = store.get_ingest_manifest(session)
 
-    if records:
-        upsert(collection, records)
-        save_manifest(manifest)
+        for ref in refs:
+            data = docs.fetch_pdf(ref.name)
+            digest = file_hash(data)
+            if manifest.get(ref.name) == digest:
+                print(f"Skipping {ref.name} (unchanged)")
+                skipped.append(ref.name)
+                continue
+
+            print(f"Processing {ref.name} ...")
+            start = time.time()
+            if chunker is None:
+                chunker = build_chunker()
+            records = chunk_pdf(ref.name, data, chunker)
+            upsert(collection, records)
+            ocr_used = bool(records) and records[0]["metadata"].get("ocr_used", False)
+            store.upsert_ingested_document(
+                session, ref.name, digest, len(records), ocr_used
+            )
+            processed.append(ref.name)
+            chunks_upserted += len(records)
+            print(f"  {len(records)} chunks in {time.time() - start:.1f}s")
 
     count = collection.count()
     print(f"Done. Collection count: {count}")
     return {
         "processed": processed,
         "skipped": skipped,
-        "chunks_upserted": len(records),
+        "chunks_upserted": chunks_upserted,
         "collection_count": count,
     }
 

@@ -10,7 +10,7 @@ def _stub_stats(monkeypatch):
     monkeypatch.setattr(
         app_module,
         "get_workspace_stats",
-        lambda: {
+        lambda session: {
             "documents": ["pto-and-leave-policy.pdf", "code-of-conduct.pdf"],
             "document_count": 2,
             "chunk_count": 137,

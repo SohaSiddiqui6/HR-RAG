@@ -9,7 +9,16 @@ load_dotenv()
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DOCS_DIR = ROOT_DIR / "docs"
-MANIFEST_PATH = DOCS_DIR / "ingestion_manifest.json"
+
+# --- Ingestion corpus source --------------------------------------------
+# "local" reads PDFs from DOCS_DIR; "supabase" pulls them from a private
+# Supabase Storage bucket via the service-role key. The per-file SHA-256
+# manifest lives in Postgres (``ingested_document`` table) either way.
+DOCS_SOURCE = os.getenv("DOCS_SOURCE", "local")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")  # server-only
+DOCS_BUCKET = os.getenv("DOCS_BUCKET", "hr-policy-docs")
+DOCS_PREFIX = os.getenv("DOCS_PREFIX", "")  # optional subfolder within the bucket
 
 # --- API keys ---------------------------------------------------------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")

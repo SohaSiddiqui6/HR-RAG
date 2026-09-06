@@ -58,9 +58,10 @@ backend/
 │   │   ├── retriever.py     # hybrid search (dense + BM25 + RRF) + Cohere rerank
 │   │   ├── prompts.py       # LLM prompt templates
 │   │   ├── vectorstore.py   # Chroma Cloud client + dense/sparse schema
-│   │   └── ingest.py        # Docling -> chunk -> upsert  (python -m src.rag.ingest | POST /api/ingest)
+│   │   ├── storage.py       # source PDFs: local docs/ dir or a Supabase Storage bucket
+│   │   └── ingest.py        # fetch -> Docling -> chunk -> upsert  (python -m src.rag.ingest | POST /api/ingest)
 │   └── db/
-│       ├── models.py        # SQLModel tables
+│       ├── models.py        # SQLModel tables (conversations + ingestion manifest)
 │       ├── session.py       # engine + get_session()
 │       └── store.py         # query functions
 ├── scripts/sanity_check.py  # dense vs sparse retrieval leg check
@@ -83,6 +84,13 @@ Required (see [.env.example](.env.example)): `OPENAI_API_KEY`, `CHROMA_API_KEY`,
 `CHROMA_TENANT`, `COHERE_API_KEY`, `DATABASE_URL` (Supabase Postgres).
 `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` turn on request tracing and are
 required to run the evaluation.
+
+Ingestion reads source PDFs from `backend/docs/` by default (`DOCS_SOURCE=local`).
+Set `DOCS_SOURCE=supabase` plus `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and
+`DOCS_BUCKET` to pull them from a private Supabase Storage bucket instead. The
+per-file SHA-256 manifest is kept in Postgres (`ingested_document`), so it
+survives redeploys and is shared across instances — truncate that table to force
+a full re-ingest.
 
 ## Usage
 

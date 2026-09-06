@@ -50,9 +50,9 @@ def health() -> dict:
 
 
 @app.get("/api/workspace", response_model=WorkspaceStats)
-def workspace() -> dict:
+def workspace(session: Session = Depends(get_session)) -> dict:
     """Coverage summary for the right-hand pane: indexed documents and chunk count."""
-    return get_workspace_stats()
+    return get_workspace_stats(session)
 
 
 @app.post(

@@ -13,7 +13,6 @@ venv/
 .env
 
 # Backend — local state (regenerated) + caches
-backend/docs/ingestion_manifest.json
 backend/evaluation/results.json
 models_cache/
 .docling/
