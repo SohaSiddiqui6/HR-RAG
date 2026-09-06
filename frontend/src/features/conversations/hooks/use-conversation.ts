@@ -54,10 +54,15 @@ export function useConversation(conversationId?: string) {
     mutationFn: (question: string) => sendMessage(conversationId!, question),
     // Await the refetch so the persisted pair is on screen before the pending
     // overlay clears (onSettled) — avoids a flash of a duplicate user bubble.
+    // Also refresh the sidebar list: the first message names the conversation
+    // and bumps its position.
     onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: conversationKeys.detail(conversationId!),
-      }),
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: conversationKeys.detail(conversationId!),
+        }),
+        queryClient.invalidateQueries({ queryKey: conversationKeys.all }),
+      ]),
   });
 
   function send(text: string) {
