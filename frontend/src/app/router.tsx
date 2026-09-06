@@ -1,7 +1,7 @@
 import { createBrowserRouter } from "react-router-dom";
 
 import { AppLayout } from "@/app/layout/app-layout";
-import { ChatView } from "@/features/chat/components/chat-view";
+import { ChatView } from "@/features/conversations/components/chat-view";
 
 export const router = createBrowserRouter([
   {

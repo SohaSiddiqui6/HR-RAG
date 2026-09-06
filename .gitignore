@@ -1,26 +1,22 @@
-# Python
+# Python / OS
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
-
-# Env / secrets
-.env
-
-# Model + parser caches
-models_cache/
-.docling/
-
-# Local pipeline state (regenerated)
-docs/ingestion_manifest.json
-evaluation/results.json
-
-# IDE / OS
+.pytest_cache/
 .vscode/
 .idea/
 .DS_Store
-.pytest_cache/
+
+# Secrets
+.env
+
+# Backend — local state (regenerated) + caches
+backend/docs/ingestion_manifest.json
+backend/evaluation/results.json
+models_cache/
+.docling/
 
 # Frontend
 frontend/node_modules/

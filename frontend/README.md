@@ -10,7 +10,7 @@ npm install
 npm run dev          # http://localhost:5173, proxies /api → http://localhost:8000
 ```
 
-Start the backend alongside it: `cd .. && uv run uvicorn src.app:app`.
+Start the backend alongside it: `cd ../backend && uv run uvicorn src.app:app`.
 
 ## Scripts
 
@@ -33,10 +33,10 @@ don't import each other — they compose in `src/app/layout/` and share `src/lib
 src/
 ├── app/          providers, query client, router, 3-pane layout
 ├── components/    ui/ (shadcn primitives) · common/ (Brand, Markdown, EmptyState)
-├── features/      chat · conversations · workspace
+├── features/      conversations · workspace
 ├── lib/           api-client · cn · config
 ├── hooks/         useLocalStorage · useMediaQuery
-├── types/         ApiError, shared primitives
+├── types/         ApiError · conversation domain types
 └── styles/        globals.css (Tailwind v4 + dark theme tokens)
 ```
 

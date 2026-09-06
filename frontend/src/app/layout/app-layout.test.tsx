@@ -3,7 +3,7 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
 import { AppLayout } from "@/app/layout/app-layout";
-import { ChatView } from "@/features/chat/components/chat-view";
+import { ChatView } from "@/features/conversations/components/chat-view";
 import { renderWithProviders } from "@/test/render";
 
 function renderAt(path: string) {
@@ -32,10 +32,13 @@ describe("AppLayout", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders for a conversation deep-link", () => {
+  it("renders the shell for a conversation deep-link", async () => {
     renderAt("/c/abc123");
+    // The chat pane loads (or 404s) — the layout still frames it.
+    expect(screen.getByText("Peoplewise")).toBeInTheDocument();
+    expect(screen.getByText("Workspace")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "How can I help with HR?" }),
+      await screen.findByRole("heading", { name: "How can I help with HR?" }),
     ).toBeInTheDocument();
   });
 });
