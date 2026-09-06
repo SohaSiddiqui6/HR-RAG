@@ -12,7 +12,7 @@ never by trusting the model to know when it doesn't know.
 └── frontend/   React + TypeScript SPA (Vite · Tailwind · TanStack Query · SSE streaming)
 ```
 
-## Run both
+## Run — local dev
 
 ```bash
 # terminal 1 — API on :8000
@@ -22,6 +22,21 @@ uv run uvicorn src.app:app --reload
 # terminal 2 — UI on :5173 (proxies /api → :8000)
 cd frontend && npm install && npm run dev
 ```
+
+## Run — one container
+
+The whole app (React SPA served by FastAPI from one origin):
+
+```bash
+docker compose up --build          # → http://localhost:8000
+# or: docker build -t hr-rag . && docker run -p 8000:8000 --env-file backend/.env hr-rag
+```
+
+The image is **serving-only** (~1 GB) — the ingestion stack (Docling/transformers/torch,
+~2 GB) is an optional dependency group the request path never imports, so it's
+left out and `POST /api/ingest` returns 501. Ingestion runs as a separate job:
+`cd backend && uv sync --group ingestion && uv run python -m src.rag.ingest`.
+See [docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md).
 
 ## Docs
 

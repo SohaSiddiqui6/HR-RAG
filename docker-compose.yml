@@ -1,0 +1,9 @@
+# Whole app in one container: `docker compose up --build` -> http://localhost:8000
+# Reads secrets from backend/.env (Chroma / OpenAI / Cohere / DATABASE_URL / …).
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env

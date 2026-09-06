@@ -377,6 +377,13 @@ Tokens stream for UX; the guarded answer is what gets persisted and re-rendered.
 `RetrievalContext` → a Chroma `where` filter, enforced at retrieval, never by the
 LLM. Making it real needs request identity + access metadata on chunks.
 
+**Serving and ingestion have different resource profiles.**
+The API never imports Docling/torch — it's an optional dependency group, lazy-
+loaded, only `POST /api/ingest` touches it. So the Docker image is serving-only
+(~1 GB, one container: FastAPI + the built SPA); ingestion runs as a separate job
+(`uv sync --group ingestion` + the CLI). One `pyproject.toml` group away from a
+fully split serving / ingestion deployment.
+
 ---
 
 ## Appendix — API
