@@ -1,7 +1,29 @@
-import { PolicyCoverageCard } from "@/features/workspace/components/policy-coverage-card";
+import { useQuery } from "@tanstack/react-query";
+import { useParams } from "react-router-dom";
 
-/** Right pane: policy coverage / groundedness / source index. */
+import { getConversation } from "@/features/conversations/api/conversations";
+import { conversationKeys } from "@/features/conversations/api/keys";
+import { PolicyCoverageCard } from "@/features/workspace/components/policy-coverage-card";
+import type { Message } from "@/types/conversation";
+
+/** Distinct policy documents cited across a conversation's answers, in first-seen order. */
+function citedDocuments(messages: Message[]): string[] {
+  const seen = new Set<string>();
+  for (const message of messages) {
+    for (const source of message.sources ?? []) seen.add(source.document);
+  }
+  return [...seen];
+}
+
+/** Right pane: policy coverage — the whole index, or just what the open chat used. */
 export function WorkspacePanel() {
+  const { conversationId } = useParams();
+  const { data } = useQuery({
+    queryKey: conversationKeys.detail(conversationId ?? ""),
+    queryFn: () => getConversation(conversationId!),
+    enabled: Boolean(conversationId),
+  });
+
   return (
     <aside
       aria-label="Workspace"
@@ -14,7 +36,9 @@ export function WorkspacePanel() {
         <div className="mt-1 text-lg font-semibold">HR help center</div>
       </div>
 
-      <PolicyCoverageCard />
+      <PolicyCoverageCard
+        citedDocuments={data ? citedDocuments(data.messages) : undefined}
+      />
     </aside>
   );
 }

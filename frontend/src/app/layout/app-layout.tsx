@@ -7,9 +7,9 @@ import { WorkspacePanel } from "@/app/layout/workspace-panel";
 /** Three-pane shell: sidebar | chat (routed) | workspace. */
 export function AppLayout() {
   return (
-    <div className="bg-background text-foreground grid h-full grid-cols-[260px_1fr_340px]">
+    <div className="bg-background text-foreground grid h-screen grid-cols-[260px_1fr_340px] grid-rows-1 overflow-hidden">
       <Sidebar />
-      <main className="min-w-0" aria-label="Conversation">
+      <main className="min-w-0 overflow-hidden" aria-label="Conversation">
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>

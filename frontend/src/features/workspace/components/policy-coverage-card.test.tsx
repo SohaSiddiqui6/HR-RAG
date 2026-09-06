@@ -25,4 +25,22 @@ describe("PolicyCoverageCard", () => {
 
     expect(await screen.findByText("Source index unavailable.")).toBeInTheDocument();
   });
+
+  it("shows only the documents cited in the open conversation", () => {
+    renderWithProviders(
+      <PolicyCoverageCard citedDocuments={["benefits-overview.pdf"]} />,
+    );
+
+    expect(
+      screen.getByText("1 policy referenced in this conversation"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("benefits-overview")).toBeInTheDocument();
+    expect(screen.queryByText("pto-and-leave-policy")).not.toBeInTheDocument();
+  });
+
+  it("says so when the conversation has cited nothing yet", () => {
+    renderWithProviders(<PolicyCoverageCard citedDocuments={[]} />);
+
+    expect(screen.getByText("No policies referenced yet.")).toBeInTheDocument();
+  });
 });

@@ -1,4 +1,4 @@
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Loader2 } from "lucide-react";
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -35,12 +35,14 @@ export function ChatComposer({ onSend, disabled = false }: ChatComposerProps) {
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
           rows={1}
-          placeholder="Ask about policies, benefits, time off…"
+          placeholder={
+            disabled ? "Answering…" : "Ask about policies, benefits, time off…"
+          }
           aria-label="Message"
           className="[field-sizing:content] max-h-40 resize-none border-0 bg-transparent px-2 py-1.5 focus-visible:ring-0"
         />
         <Button type="submit" size="icon" disabled={!canSend} aria-label="Send">
-          <ArrowUp />
+          {disabled ? <Loader2 className="animate-spin" /> : <ArrowUp />}
         </Button>
       </div>
     </form>

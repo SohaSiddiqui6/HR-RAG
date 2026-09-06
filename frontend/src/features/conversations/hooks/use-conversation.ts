@@ -67,6 +67,7 @@ export function useConversation(conversationId?: string) {
   const mutation = useMutation({ mutationFn: runSend });
 
   function send(text: string) {
+    if (mutation.isPending) return; // one question at a time
     setPendingText(text);
     setStreamingText(null);
     setLocalError(null);

@@ -31,4 +31,16 @@ describe("ChatComposer", () => {
     render(<ChatComposer onSend={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
+
+  it("cannot send while an answer is streaming", async () => {
+    const onSend = vi.fn();
+    render(<ChatComposer onSend={onSend} disabled />);
+    const field = screen.getByRole("textbox", { name: "Message" });
+
+    await userEvent.type(field, "another question{Enter}");
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(field).toHaveAttribute("placeholder", "Answering…");
+  });
 });
