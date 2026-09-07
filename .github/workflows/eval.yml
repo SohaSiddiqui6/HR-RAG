@@ -9,6 +9,11 @@ name: eval
 # so it is not wired to push/PR. To run it on a schedule instead, add e.g.
 #   schedule:
 #     - cron: "0 6 * * 1"   # 06:00 UTC every Monday
+#
+# Secrets: all required keys live in one GitHub secret, APP_ENV, holding the
+# full contents of backend/app.env (KEY=value per line). The "Load secrets
+# from app.env" step below parses it and exports each key into $GITHUB_ENV
+# for the rest of the job.
 
 on:
   workflow_dispatch:
@@ -25,16 +30,16 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-      CHROMA_API_KEY: ${{ secrets.CHROMA_API_KEY }}
-      CHROMA_TENANT: ${{ secrets.CHROMA_TENANT }}
-      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-      LANGFUSE_HOST: https://cloud.langfuse.com
     steps:
       - uses: actions/checkout@v4
+
+      - name: Load secrets from app.env
+        run: |
+          while IFS='=' read -r key value; do
+            [[ -z "$key" || "$key" == \#* ]] && continue
+            echo "::add-mask::$value"
+            echo "$key=$value" >> "$GITHUB_ENV"
+          done <<< "${{ secrets.APP_ENV }}"
 
       - uses: astral-sh/setup-uv@v5
         with:
@@ -46,6 +51,8 @@ jobs:
 
       - name: Run evaluation
         run: uv run python -m evaluation.run_evaluation
+        env:
+          LANGFUSE_HOST: https://cloud.langfuse.com
 
       - name: Upload results.json
         if: always()
