@@ -6,6 +6,11 @@ cited** answers. It distinguishes three things it can do with a question —
 it to a human — and decides which deterministically (a reranker-score threshold),
 never by trusting the model to know when it doesn't know.
 
+| | |
+|---|---|
+| **Live app** | http://13.50.233.254/ |
+| **Traces & evals** | [Langfuse project](https://cloud.langfuse.com/project/cmtou71p00o0iad0dizk0uo79/traces) |
+
 ```
 ├── backend/    FastAPI · hybrid retrieval (Chroma dense + BM25 + RRF) · Cohere rerank
 │               · GPT-4o-mini · Postgres · guardrails · Langfuse · Slack handoff

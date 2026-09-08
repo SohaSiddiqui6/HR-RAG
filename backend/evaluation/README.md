@@ -81,10 +81,10 @@ regression gate (fail when `task_success` drops).
 This offline harness is the **regression gate**. In production, quality is watched
 without paying judge costs on every request:
 
-| tier | what | where |
+| signal | what | where |
 |---|---|---|
-| **1 — deterministic** | `outcome` (answered / needs_human / out_of_scope), `grounded` (lexical), `cited` — scored on 100% of requests, no LLM call | `app._score` → `tracing.score` |
-| **2 — user feedback** | 👍/👎 on each answer → a `user_feedback` score on its trace | `POST /api/feedback` |
-| **3 — sampled LLM judge** | faithfulness / correctness on a random 1–5% of traces, run **asynchronously on Langfuse's infra**, never on the request path | configure a Langfuse **Evaluator** in the UI (Evaluation → Evaluators): pick the metric prompt, set the sampling rate, filter to `outcome = needs_human` or `user_feedback = 0` to bias toward interesting cases |
+| **deterministic scores** | `outcome` (answered / needs_human / out_of_scope), `grounded` (lexical), `cited` — scored on 100% of requests, no LLM call | `app._score` → `tracing.score` |
+| **user feedback** | 👍/👎 on each answer → a `user_feedback` score on its trace | `POST /api/feedback` |
 
-Production 👎 and escalations feed back into `dataset.json` as `regression` items.
+Neither adds an LLM call to the request path. Production 👎 and escalations feed
+back into `dataset.json` as `regression` items.
